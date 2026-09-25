@@ -62,7 +62,9 @@ func within(child, parent string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
-func (s Sandbox) check(real config.Config) error {
+// Validate reports whether Dir is safe to use: absolute, ends in /sandbox,
+// and neither contains nor is contained by the mail root.
+func (s Sandbox) Validate(real config.Config) error {
 	d := filepath.Clean(s.Dir)
 	m := filepath.Clean(real.MailRoot)
 	switch {
@@ -80,7 +82,7 @@ func (s Sandbox) check(real config.Config) error {
 // clears the sandbox index and journal. The clone is taken under the real
 // mbsync lock so it is a consistent snapshot.
 func (s Sandbox) Refresh(real config.Config) error {
-	if err := s.check(real); err != nil {
+	if err := s.Validate(real); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {

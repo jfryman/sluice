@@ -178,3 +178,51 @@ func (r Remote) Publish(localPath, newText string) (log []string, err error) {
 	log = append(log, "activated "+r.Script)
 	return log, nil
 }
+
+// ServerStatus is what the server says about the configured script.
+type ServerStatus struct {
+	Scripts []string
+	Exists  bool
+	Active  bool
+	Drift   bool // remote text differs from localPath
+}
+
+// Status logs in, lists scripts and compares the remote script with
+// localPath. It runs the credential commands (may prompt).
+func (r Remote) Status(localPath string) (ServerStatus, error) {
+	var st ServerStatus
+	c, err := r.creds()
+	if err != nil {
+		return st, fmt.Errorf("credentials: %w", err)
+	}
+	defer c.wipe()
+	out, err := r.run(c, "--list")
+	if err != nil {
+		return st, err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) == 0 {
+			continue
+		}
+		name := strings.Trim(f[0], `"`)
+		st.Scripts = append(st.Scripts, name)
+		if name == r.Script {
+			st.Exists = true
+			st.Active = strings.Contains(strings.ToLower(line), "active")
+		}
+	}
+	if !st.Exists {
+		return st, nil
+	}
+	remote, err := r.download(c)
+	if err != nil {
+		return st, err
+	}
+	local, err := os.ReadFile(localPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return st, err
+	}
+	st.Drift = normalize(remote) != normalize(string(local))
+	return st, nil
+}

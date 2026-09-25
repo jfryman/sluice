@@ -4,6 +4,7 @@
 - [terminology.md](terminology.md) — domain terms
 - [practices.md](practices.md) — safety, secrets, Go style
 - [architecture.md](architecture.md) — packages, dependency graph, config keys, CLI
+- [doctor.md](doctor.md) — `sluice doctor`: formal requirements, checks, capabilities, fixes
 - [development.md](development.md) — make targets, watch loop, testing without touching real data
 - apply/
   - [plan.md](apply/plan.md) — plan-first model, plan.json shape, apply order, validation, archive

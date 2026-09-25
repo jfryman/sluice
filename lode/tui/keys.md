@@ -73,3 +73,4 @@ after a real apply (restoring an archived plan would re-apply it). Edits made by
 | `:w PATH` | write a copy of the plan (the plan itself always autosaves) |
 | `:discard` | discard plan (confirm) |
 | `:undo` · `:redo` · `:rescan` · `:tab N` · `:help` | as keys |
+| `:doctor` | offline requirement report for this environment in a dialog |

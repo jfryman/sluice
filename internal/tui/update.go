@@ -84,6 +84,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmPlanTrash(msg.label, msg.msgs)
 		return m, nil
 
+	case doctorMsg:
+		m.busy = ""
+		m.openDialog("Doctor ("+m.d.Env+")", msg.lines)
+		return m, nil
+
 	case itemMsg:
 		if msg.err != nil {
 			m.setErr(msg.err)

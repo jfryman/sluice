@@ -100,6 +100,7 @@ func init() {
 			m.switchTab(tab(n - 1))
 			return nil
 		}},
+		{"doctor", nil, "check requirements (offline)", func(m *Model, a string) tea.Cmd { return m.runDoctor() }},
 		{"help", nil, "key + command help", func(m *Model, a string) tea.Cmd { m.openHelp(); return nil }},
 	}
 }

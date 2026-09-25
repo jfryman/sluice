@@ -28,6 +28,11 @@ go func() { w.Write(append(pass, '\n')); w.Close() }()
 - Long work (index scan, sieve-connect, moves) runs as `tea.Cmd` returning a typed msg; never block `Update`.
 - Pure-Go SQLite (`modernc.org/sqlite`) — no cgo.
 
+## Requirements live in doctor
+- Any new external dependency, config key with preconditions, or filesystem assumption gets a check
+  in `internal/doctor` (with a concrete fix string and the capabilities it gates) and a line in the
+  README requirements. See [doctor.md](doctor.md).
+
 ## Iteration
 - Exercise destructive features in the sandbox (`make dev`), never against `~/Mail/kolab`; for real-mode
   UI testing use `-plan <scratch>` so James's plan isn't touched.

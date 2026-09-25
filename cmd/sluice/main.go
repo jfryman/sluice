@@ -8,12 +8,15 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/jfryman/sluice/internal/config"
+	"github.com/jfryman/sluice/internal/doctor"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sandbox"
@@ -28,6 +31,9 @@ type opts struct {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "doctor" {
+		os.Exit(doctorCmd(os.Args[2:]))
+	}
 	var o opts
 	flag.StringVar(&o.cfgPath, "config", config.DefaultPath(), "config file")
 	flag.StringVar(&o.planPath, "plan", "", "plan file (default $XDG_STATE_HOME/sluice/plan.json)")
@@ -36,6 +42,10 @@ func main() {
 	flag.BoolVar(&o.reset, "reset-sandbox", false, "re-clone the sandbox from real mail first (implies -sandbox)")
 	flag.BoolVar(&o.apply, "apply", false, "apply the plan headlessly to the selected environment and exit")
 	flag.BoolVar(&o.yes, "yes", false, "with -apply: don't ask for confirmation")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n\nFlags:\n")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	if err := run(o); err != nil {
@@ -111,6 +121,48 @@ func run(o opts) error {
 	}
 	_, err = tea.NewProgram(tui.New(deps), tea.WithAltScreen()).Run()
 	return err
+}
+
+// doctorCmd runs `sluice doctor`; exit 1 if any check failed.
+func doctorCmd(args []string) int {
+	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	online := fs.Bool("online", false, "also log in to the Sieve server (runs user_cmd/pass_cmd; may prompt)")
+	fs.Parse(args)
+
+	cfg, cfgErr := config.Load(*cfgPath)
+	if cfgErr != nil {
+		cfg, _ = config.Load(filepath.Join(os.TempDir(), "sluice-no-config.toml")) // defaults
+	}
+	rep := doctor.Run(cfg, doctor.Options{Online: *online, ConfigPath: *cfgPath, ConfigErr: cfgErr})
+	for _, l := range rep.Lines() {
+		fmt.Println(colorize(l))
+	}
+	if !*online {
+		fmt.Println("\n(server not checked; run `sluice doctor -online` before a first real apply)")
+	}
+	if rep.Failed() {
+		return 1
+	}
+	return 0
+}
+
+var symStyle = map[string]lipgloss.Style{
+	"✓": lipgloss.NewStyle().Foreground(lipgloss.Color("2")),
+	"!": lipgloss.NewStyle().Foreground(lipgloss.Color("3")),
+	"✗": lipgloss.NewStyle().Foreground(lipgloss.Color("1")),
+}
+
+// colorize colours status symbols that start a line or a capability.
+func colorize(l string) string {
+	words := strings.Split(l, " ")
+	for i, w := range words {
+		st, ok := symStyle[w]
+		if ok && (i == 0 || i+1 < len(words) && words[i-1] == "" || strings.HasSuffix(words[max(i-1, 0)], ":")) {
+			words[i] = st.Render(w)
+		}
+	}
+	return strings.Join(words, " ")
 }
 
 func applyHeadless(realCfg config.Config, t plan.Target, yes bool) error {

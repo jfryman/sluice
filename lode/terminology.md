@@ -28,3 +28,5 @@
 - Validated - plan stamp set when the exact plan content applied cleanly to a freshly cloned sandbox; any edit clears it.
 - Publisher - interface for making a script active: `sieve.Remote` (sieve-connect) or `sieve.FilePublisher` (sandbox).
 - Batch - one trash operation (one journal id).
+- Doctor - `sluice doctor`: executable requirements check; each check is ok/warn/fail with a fix.
+- Capability - what a machine can do per doctor: browse & plan, apply to sandbox, apply to real.

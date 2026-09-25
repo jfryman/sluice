@@ -18,6 +18,7 @@ import (
 
 	"github.com/jfryman/sluice/internal/cleanup"
 	"github.com/jfryman/sluice/internal/config"
+	"github.com/jfryman/sluice/internal/doctor"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/maildir"
 	"github.com/jfryman/sluice/internal/plan"
@@ -864,6 +865,16 @@ func (m *Model) openApply() {
 		return nil
 	}})
 	m.openDialog("Apply plan", lines, acts...)
+}
+
+type doctorMsg struct{ lines []string }
+
+// runDoctor runs the offline requirement checks for this environment.
+func (m *Model) runDoctor() tea.Cmd {
+	cfg := m.d.Config
+	return tea.Batch(m.startBusy("running doctor"), func() tea.Msg {
+		return doctorMsg{doctor.Run(cfg, doctor.Options{ConfigPath: config.DefaultPath()}).Lines()}
+	})
 }
 
 // applyCommand implements :apply [sandbox|real].

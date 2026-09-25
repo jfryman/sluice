@@ -48,10 +48,20 @@ flowchart LR
 
 ## Requirements
 
+Run **`sluice doctor`** to check all of this on your machine. It tells you what's missing and how to fix
+it, and which features (browse & plan / apply to sandbox / apply to real) you can use right now.
+`sluice doctor -online` also logs in to your Sieve server to confirm your script exists, is active,
+and matches your local copy. It runs your password command, so it may prompt.
+
 - Linux; Go 1.27+ to build.
 - A **maildir kept in sync by mbsync** (isync). sluice follows mbsync's rules for moving files
   (it strips the `,U=` UID from filenames) and holds the same lock file your sync uses, so the two
-  never run at the same time.
+  never run at the same time. For moves to reach the server, your mbsync config needs:
+  - a `MaildirStore` whose `Path` is your `mail_root`
+  - `Sync All`, or any setting that includes Push, so local changes are uploaded
+  - `Expunge Both` (or `Far`), so originals are removed from the server instead of left marked deleted
+- Your sync run through `flock` on the lock file (e.g. `flock $XDG_RUNTIME_DIR/mbsync.lock mbsync …`).
+- A trash folder that already exists in the maildir (`Deleted Messages` by default).
 - A server with **ManageSieve** support, and [`sieve-connect`](https://github.com/philpennock/sieve-connect)
   installed.
 - Two commands that print your mail username and password (for example, reading them from a password
@@ -64,11 +74,13 @@ flowchart LR
 
 ```sh
 make install          # runs checks, builds, installs to ~/.local/bin/sluice
+sluice doctor         # check this machine meets the requirements
 ```
 
 ## Quick start
 
 ```sh
+sluice doctor         # green across the board?
 sluice -scan          # build the index and print the top candidates
 sluice                # open the TUI on your real mail (still plan-first)
 ```
@@ -79,8 +91,8 @@ sluice                # open the TUI on your real mail (still plan-first)
 3. Check the **Plan** tab (`l` until you reach it, or `4gt`).
 4. Press `A`, then `s`: sluice makes a fresh sandbox copy, applies the plan there and shows a report.
    Run `sluice -sandbox` if you want to browse the result.
-5. Press `A`, then `r`, then `y` to apply to your real mail and Sieve server. mbsync sends the moves
-   to the server on its next run.
+5. Before your first real apply, run `sluice doctor -online`. Then press `A`, then `r`, then `y`
+   to apply to your real mail and Sieve server. mbsync sends the moves to the server on its next run.
 
 ## Keys (vim-style)
 
@@ -104,12 +116,13 @@ Example: `domain:beehiiv.com older:1y unread`.
 
 **Commands** (`:` then tab to complete): `:apply [sandbox|real]`, `:group list|domain|sender`,
 `:sort score|90d|total|unread`, `:filter TEXT`, `:hide`/`:nohide`, `:search QUERY`, `:w PATH`,
-`:discard`, `:undo`, `:redo`, `:rescan`, `:tab N`, `:{n}`, `:q`.
+`:discard`, `:undo`, `:redo`, `:rescan`, `:doctor`, `:tab N`, `:{n}`, `:q`.
 
 ## Command line
 
 ```
 sluice [-config PATH] [-plan PATH] [-sandbox | -reset-sandbox] [-scan | -apply [-yes]]
+sluice doctor [-online] [-config PATH]
 ```
 
 | flag | effect |
@@ -121,6 +134,7 @@ sluice [-config PATH] [-plan PATH] [-sandbox | -reset-sandbox] [-scan | -apply [
 | `-apply` | print the plan, ask y/N, apply it, print a report (`-yes` skips the question) |
 | `-plan PATH` | use a different plan file |
 | `-config PATH` | use a different config file |
+| `doctor` | check the requirements; exits 1 if anything fails. `-online` also checks the Sieve server |
 
 ## Configuration
 
