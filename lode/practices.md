@@ -12,6 +12,25 @@
   `kolab.sieve.bak` before rewrite. See [sieve/remote.md](sieve/remote.md).
 - Sluice only edits text between its markers; hand-written rules are preserved byte-for-byte.
 
+## Public repo: sanitize what gets committed
+`github.com/jfryman/sluice` is **public**. Everything committed (code, tests, README, lode) is
+published. Credentials are never involved (see Secrets), but mailbox-derived data is personal.
+- In new docs, tests, fixtures and examples use made-up data: `news.example.com`,
+  `promo.shop.example`, `<hash>.list-id.example`, generic subjects, `k1:2,S`-style filenames.
+- Don't paste real sender domains, List-Ids, subject lines, addresses, maildir filenames (they embed
+  the hostname), message counts or screen captures of James's mailbox into committed files. Real
+  observations go in `lode/tmp/` (git-ignored) or get paraphrased ("a newsletter platform sending
+  ~1.2k msgs / 90d").
+- Before committing, scan the diff for real-mail specifics.
+- Existing examples already pushed (README screenshot, a few lode lessons) were accepted by James
+  on 2026-09-24; don't add more, and prefer sanitized versions whenever those sections are edited.
+
+```sh
+# pre-commit scan: flag anything that looks like it came from the real mailbox
+git diff --cached | grep -nE '^\+' | grep -viE 'example\.(com|org)|\.example\b|github\.com/jfryman' \
+  | grep -nE '[a-z0-9-]+\.(com|net|org|io|me|co)\b|@[a-z0-9.-]+\.[a-z]{2,}'
+```
+
 ## Secrets
 - Never read, store or log credentials. Shell out to configurable commands (`mail-user`, `mail-pass`)
   and hand the password to `sieve-connect` on fd 3 via a pipe (`--passwordfd 3`), newline-terminated.
