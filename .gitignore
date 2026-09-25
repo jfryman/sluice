@@ -1,0 +1,3 @@
+lode/tmp/*
+!lode/tmp/.gitkeep
+/bin/

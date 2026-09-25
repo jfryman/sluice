@@ -1,0 +1,30 @@
+# Terminology
+
+- Lode - this `lode/` directory; the AI-owned project memory.
+- Maildir - one directory per folder with `cur/ new/ tmp/`; one file per message.
+- Folder - a maildir directory name relative to the mail root (e.g. `Archive`, `+SaneBlackHole`, `INBOX`).
+- Message key - the maildir filename's unique part: everything before `,U=` and `:2,`; stable across flag changes and mbsync renames.
+- Info flags - the maildir suffix after `:2,` (`S` seen, `R` replied, `F` flagged, `T` trashed, `D` draft).
+- `U=` - mbsync's IMAP UID embedded in filenames; MUST be stripped when a file is moved to another folder.
+- mail-sync - James's wrapper that runs mbsync under `$XDG_RUNTIME_DIR/mbsync.lock` (flock).
+- SaneBox folders - `+SaneBlackHole`, `+SaneNews`, `+SaneLater`, etc.; SaneBox's own triage, used as a spam signal.
+- Group - an aggregation of messages by a group kind: `list` (List-Id), `domain` (From domain), or `sender` (From address).
+- Candidate - a group ranked as a likely rule target (high volume, mostly unread / black-holed).
+- Score - heuristic ranking value for a candidate; see [mail/index.md](mail/index.md).
+- Rule - one managed Sieve `if` block: a match (kind + value) and an action.
+- Action - `trash` (fileinto "Deleted Messages" + seen), `file` (fileinto folder), `read` (mark seen, keep in place).
+- Managed block - the region of `kolab.sieve` between sluice markers; the only part sluice writes.
+- Rule metadata - the `# sluice: {json}` comment above each managed rule; source of truth for parsing rules back.
+- Drift - the remote active script differs from the local `kolab.sieve`; publishing aborts on drift (real and sandbox).
+- Query - the search mini-language (`from:`, `list:`, `domain:`, `folder:`, `before:`, `unread`, free text).
+- Trash (verb) - move message files into `Deleted Messages/cur` with `U=` stripped.
+- Journal - JSONL log of trash batches used for undo (one per environment).
+- Plan - the persisted list of pending rule ops and trash items (`plan.json`); the only thing the TUI edits.
+- Rule op - a plan entry `add` (upsert) or `remove` of a managed rule, applied as a delta to the target's sieve file.
+- Trash item - a plan entry: a label plus the frozen list of message refs (key + folder) reviewed when it was added.
+- Apply - executing the plan against a target: publish rule changes, then move all trash refs in one batch.
+- Target - an environment a plan can be applied to: `sandbox` or `real`.
+- Sandbox - `$XDG_DATA_HOME/sluice/sandbox`: reflink clone of the mailbox + sieve script with a file-based stand-in server.
+- Validated - plan stamp set when the exact plan content applied cleanly to a freshly cloned sandbox; any edit clears it.
+- Publisher - interface for making a script active: `sieve.Remote` (sieve-connect) or `sieve.FilePublisher` (sandbox).
+- Batch - one trash operation (one journal id).
