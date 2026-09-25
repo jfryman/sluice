@@ -41,6 +41,8 @@ flowchart LR
   before/after a real-mode session with a sandbox apply were identical.
 
 ## Lessons
+- zsh (James's shell): `echo =====` fails (`=word` expansion) and an unmatched glob errors
+  (`ls foo*`) — quote them in scripted checks.
 - `set -o pipefail` + `ls | head` kills a script with exit 141 (SIGPIPE); use
   `mapfile -t xs < <(… | head)` instead.
 - The earlier partial-copy `.dev/` sandbox script was replaced by the built-in full sandbox: a reflink

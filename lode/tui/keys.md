@@ -6,7 +6,8 @@ Related: [summary.md](summary.md), [../apply/plan.md](../apply/plan.md).
 ## Dispatcher
 Key input outside text prompts goes through one dispatcher with vim semantics:
 - **Counts**: digits accumulate (`12j`); `0` with no pending count is a no-op.
-- **Prefixes**: `g`, `z`, `d`, `Z` wait for a second key; the pending `count+prefix` is shown at the
+- **Prefixes**: `g`, `z`, `d`, `Z` (`prefixKeys` in `keys.go`) wait for a second key — a new
+  two-key binding must start with one of these or it is unreachable; the pending `count+prefix` is shown at the
   right of the status line (vim's showcmd). Unknown sequences clear silently.
 - **Scopes** are searched most-specific first: overlay (dialog/picker) → tab (candidates / rules /
   search / plan) → list (any list tab) → global.

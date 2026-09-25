@@ -38,5 +38,12 @@ go func() { w.Write(append(pass, '\n')); w.Close() }()
   UI testing use `-plan <scratch>` so James's plan isn't touched.
   See [development.md](development.md).
 
+## Working with James
+- Discuss design first (he'll pick between concrete options), then execute end to end without
+  hand-holding; record decisions in the lode before implementing.
+- Vim user: new TUI interactions should follow vim conventions (see [tui/keys.md](tui/keys.md)).
+- Values safety (plan-first, sandbox, doctor) but not ceremony: keep confirmations to real applies.
+- Commits: branch off `main` for work, fast-forward merge when he asks.
+
 ## Lode
 - Lode describes current state; changelog-ish notes go to `lode/tmp/`.

@@ -4,6 +4,9 @@
 Index, candidates, search, plan-first staging, full reflink sandbox, apply (sandbox/real, TUI and
 headless), trash + undo — implemented and tested (`go test ./...`, tmux-driven sandbox runs).
 Not yet exercised against the live server: a real apply (sieve-connect publish + real trash batch).
+First real apply checklist: `sluice doctor -online` all ✓ (expect a 1Password prompt from
+`mail-pass`) → plan one rule + a small trash batch → `A`→`s` validate → `A`→`r`→`y` → after the
+next `mail-sync`, confirm the server's trash and active script.
 
 ## Later
 - SaneBox migration: bulk-propose rules for everything in `+SaneBlackHole`.
@@ -20,4 +23,5 @@ Not yet exercised against the live server: a real apply (sieve-connect publish +
 
 ## Open issues found during discovery
 - `kolab.sieve` files into `Newsletters`, but no such folder exists locally — either the folder is
-  missing server-side (rule silently failing) or it's excluded from sync. Needs James to confirm.
+  missing server-side (rule silently failing) or it's excluded from sync. Needs James to confirm
+  (raised twice, unanswered; substack/nytimes/mcsv mail still lands in Archive and +SaneLater).
