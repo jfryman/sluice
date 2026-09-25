@@ -45,6 +45,10 @@ flowchart LR
   exactly what would happen. The plan is marked ✓ *validated* until you change it again.
 - **Uploads check for drift:** if the Sieve script on the server doesn't match your local copy (say
   you edited it somewhere else), sluice stops rather than overwriting it.
+- **Only one Sieve script can be active.** sluice uploads the whole `kolab` script (your text
+  unchanged, its own block regenerated) and activates it. If the server has no script yet, the first
+  apply creates it. sluice never silently switches off a different active script: if one exists,
+  the apply either stops or asks you to confirm the switch.
 
 ## Requirements
 
@@ -116,13 +120,14 @@ Example: `domain:beehiiv.com older:1y unread`.
 
 **Commands** (`:` then tab to complete): `:apply [sandbox|real]`, `:group list|domain|sender`,
 `:sort score|90d|total|unread`, `:filter TEXT`, `:hide`/`:nohide`, `:search QUERY`, `:w PATH`,
-`:discard`, `:undo`, `:redo`, `:rescan`, `:doctor`, `:tab N`, `:{n}`, `:q`.
+`:discard`, `:undo`, `:redo`, `:rescan`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
 
 ## Command line
 
 ```
 sluice [-config PATH] [-plan PATH] [-sandbox | -reset-sandbox] [-scan | -apply [-yes]]
 sluice doctor [-online] [-config PATH]
+sluice version
 ```
 
 | flag | effect |
@@ -135,6 +140,7 @@ sluice doctor [-online] [-config PATH]
 | `-plan PATH` | use a different plan file |
 | `-config PATH` | use a different config file |
 | `doctor` | check the requirements; exits 1 if anything fails. `-online` also checks the Sieve server |
+| `version` (or `-version`) | print the version, commit, branch and build time |
 
 ## Configuration
 
@@ -197,7 +203,11 @@ make            # gofmt check, vet, test, build bin/sluice
 make watch      # rerun that on every save
 make dev        # TUI on the sandbox
 make dev-reset  # re-copy the sandbox from your current mail
+make version    # the version the next build will be stamped with
 ```
+
+Builds made with `make` are stamped with `git describe --tags --always --dirty`, the commit, the
+branch and the build time. `sluice version` shows them. Releases are git tags like `v0.1.0`.
 
 The code is in `internal/`, split into `config`, `maildir`, `index`, `query`, `cleanup`, `sieve`,
 `plan`, `sandbox` and `tui`. Design notes, invariants and decisions live in [`lode/`](lode/lode-map.md).

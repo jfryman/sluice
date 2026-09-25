@@ -8,6 +8,7 @@ import (
 
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/version"
 )
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -84,9 +85,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmPlanTrash(msg.label, msg.msgs)
 		return m, nil
 
+	case precheckMsg:
+		m.busy = ""
+		if msg.err != nil {
+			m.openDialog("Can't reach the Sieve server", []string{msg.err.Error(), "", "Nothing was changed."})
+			return m, nil
+		}
+		m.confirmReal(&msg.st)
+		return m, nil
+
 	case doctorMsg:
 		m.busy = ""
-		m.openDialog("Doctor ("+m.d.Env+")", msg.lines)
+		m.openDialog("Doctor ("+m.d.Env+") — "+version.Short(), msg.lines)
 		return m, nil
 
 	case itemMsg:

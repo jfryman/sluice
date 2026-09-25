@@ -9,15 +9,28 @@ BIN      := bin/sluice
 PKG      := ./cmd/sluice
 GOFILES  := $(shell find . -name '*.go')
 
-.PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install clean
+# Build metadata from git; see lode/development.md#versioning.
+VERSION  := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+COMMIT   := $(shell git rev-parse --short HEAD 2>/dev/null)
+BRANCH   := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+DATE     := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+VPKG     := github.com/jfryman/sluice/internal/version
+LDFLAGS  := -X $(VPKG).Version=$(VERSION) -X $(VPKG).Commit=$(COMMIT) \
+            -X $(VPKG).Branch=$(BRANCH) -X $(VPKG).Date=$(DATE)
+
+.PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install clean version $(BIN)
 
 all: check build
 
 build: $(BIN)
 
-$(BIN): $(GOFILES) go.mod go.sum
+# Always relinks (go build is incremental) so a new commit or tag is stamped.
+$(BIN):
 	@mkdir -p bin
-	go build -o $(BIN) $(PKG)
+	go build -ldflags '$(LDFLAGS)' -o $(BIN) $(PKG)
+
+version:
+	@echo "$(VERSION) (commit $(COMMIT), branch $(BRANCH))"
 
 test:
 	go test ./...

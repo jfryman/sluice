@@ -32,6 +32,10 @@ git diff --cached | grep -nE '^\+' | grep -viE 'example\.(com|org)|\.example\b|g
 ```
 
 ## Secrets
+- **Never run `sieve-connect --debug`** (or any protocol trace) where output is captured: the
+  AUTHENTICATE line is `base64(user\0user\0password)` — a plaintext credential. This leaked the
+  KolabNow password into a session transcript on 2026-09-24 (filtering the output did not catch it).
+  To see what the server has, use `sluice doctor -online` or plain `--list`, which never echo auth.
 - Never read, store or log credentials. Shell out to configurable commands (`mail-user`, `mail-pass`)
   and hand the password to `sieve-connect` on fd 3 via a pipe (`--passwordfd 3`), newline-terminated.
 

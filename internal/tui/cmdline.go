@@ -12,6 +12,7 @@ import (
 	"github.com/jfryman/sluice/internal/config"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/plan"
+	"github.com/jfryman/sluice/internal/version"
 )
 
 // command is one ex-style command. args lists completions for the first
@@ -98,6 +99,10 @@ func init() {
 				return nil
 			}
 			m.switchTab(tab(n - 1))
+			return nil
+		}},
+		{"version", nil, "show build version", func(m *Model, a string) tea.Cmd {
+			m.setStatus("%s", strings.ReplaceAll(version.Long(), "\n", " ·"))
 			return nil
 		}},
 		{"doctor", nil, "check requirements (offline)", func(m *Model, a string) tea.Cmd { return m.runDoctor() }},

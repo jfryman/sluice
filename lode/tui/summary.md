@@ -33,7 +33,10 @@ Targets for `t`/`f`/`r`/`x`: visual range, else marked rows, else `{count}` rows
 Group detail and trash-item listings are dialogs (scrollable; detail offers `s` to search the group).
 
 Apply dialog (real mode): full plan summary + collapsed sieve diff + validation status; `s` clones a
-fresh sandbox and applies there (marks the plan validated), `r` opens a second "REAL" confirm (`y`).
+fresh sandbox and applies there (marks the plan validated), `r` runs the server precheck
+(`precheckMsg`, only when rules change) and then opens the "REAL" confirm (`y`), which states the
+server situation (matches / first publish creates it / switch from another active script) or
+refuses (drift, other script active while ours is missing).
 Sandbox mode offers only `y`. `:apply sandbox|real` jumps straight to those steps. After apply a report
 dialog shows per-item moved/planned counts and the sieve log.
 

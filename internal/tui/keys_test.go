@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,7 +20,9 @@ func testModel(t *testing.T, groups int) *Model {
 	cfg := config.Default()
 	cfg.PlanPath = filepath.Join(dir, "plan.json")
 	cfg.SieveFile = filepath.Join(dir, "kolab.sieve")
-	m := New(Deps{Env: "sandbox", Config: cfg})
+	m := New(Deps{Env: "sandbox", Config: cfg, Target: plan.Target{
+		Name: "sandbox", SieveFile: cfg.SieveFile, Publisher: sieve.FilePublisher{Dir: filepath.Join(dir, "remote"), Script: "kolab"},
+	}})
 	m.w, m.h = 120, 24 // listHeight = 18
 	for i := 0; i < groups; i++ {
 		m.groups = append(m.groups, index.Group{Kind: index.KindDomain, Value: fmt.Sprintf("d%02d.example", i), Total: 1})
@@ -227,5 +230,37 @@ func TestFindAndCommands(t *testing.T) {
 	press(m, "esc")
 	if m.ov != ovNone {
 		t.Fatal("esc did not close help")
+	}
+}
+
+func TestConfirmRealServerStates(t *testing.T) {
+	m := testModel(t, 1)
+	m.d.Config.SieveScript = "kolab"
+	cases := []struct {
+		st      sieve.ServerStatus
+		actions int
+		title   string
+	}{
+		{sieve.ServerStatus{Exists: true, Active: "kolab"}, 1, "Apply plan to REAL mail and server?"},
+		{sieve.ServerStatus{}, 1, "Apply plan to REAL mail and server?"},                                        // first publish
+		{sieve.ServerStatus{Exists: true, Active: "rc"}, 1, "Apply plan to REAL mail and server?"},              // switch, confirmed by y
+		{sieve.ServerStatus{Active: "rc", Scripts: []string{"rc"}}, 0, "Can't apply: another script is active"}, // blocked
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Drift: true}, 0, "Can't apply: server script differs from local"},
+	}
+	for i, c := range cases {
+		st := c.st
+		m.confirmReal(&st)
+		if m.dialog.title != c.title || len(m.dialog.actions) != c.actions {
+			t.Errorf("case %d: title=%q actions=%d", i, m.dialog.title, len(m.dialog.actions))
+		}
+	}
+	st := sieve.ServerStatus{Exists: true, Active: "rc"}
+	m.confirmReal(&st)
+	found := false
+	for _, l := range m.dialog.lines {
+		found = found || strings.Contains(l, `switching "rc" off`)
+	}
+	if !found {
+		t.Errorf("switch warning missing: %q", m.dialog.lines)
 	}
 }

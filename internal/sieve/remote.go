@@ -7,13 +7,80 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
 // Publisher makes newText the active script, keeping localPath in sync.
 type Publisher interface {
-	Publish(localPath, newText string) (log []string, err error)
+	Publish(localPath, newText string, opt PublishOptions) (log []string, err error)
+	Status(localPath string) (ServerStatus, error)
 	Describe() string
+}
+
+// PublishOptions carries what the user confirmed before publishing.
+type PublishOptions struct {
+	// AllowSwitchFrom names another active script the user agreed to
+	// replace. Publishing never deactivates any other script silently.
+	AllowSwitchFrom string
+}
+
+// ServerStatus is what the server says about the configured script.
+type ServerStatus struct {
+	Scripts []string
+	Active  string // name of the active script, "" if none
+	Exists  bool   // the configured script is on the server
+	Drift   bool   // exists and differs from the local file
+}
+
+// OtherActive reports a different script that is currently active.
+func (s ServerStatus) OtherActive(ours string) string {
+	if s.Active != "" && s.Active != ours {
+		return s.Active
+	}
+	return ""
+}
+
+// ErrOtherActive: publishing would silently switch off another active script.
+type ErrOtherActive struct{ Ours, Active string }
+
+func (e ErrOtherActive) Error() string {
+	return fmt.Sprintf("script %q is active on the server; publishing %q would switch it off "+
+		"(set sieve_script = %q to manage it, or deactivate it first)", e.Active, e.Ours, e.Active)
+}
+
+// checkSwitch enforces the active-script guard.
+func checkSwitch(st ServerStatus, ours string, opt PublishOptions) error {
+	other := st.OtherActive(ours)
+	if other == "" {
+		return nil
+	}
+	if st.Exists && opt.AllowSwitchFrom == other {
+		return nil
+	}
+	return ErrOtherActive{Ours: ours, Active: other}
+}
+
+var listRe = regexp.MustCompile(`^"((?:[^"\\]|\\.)*)"\s*(ACTIVE)?`)
+
+// parseList reads sieve-connect --list output (raw LISTSCRIPTS lines).
+func parseList(out, ours string) ServerStatus {
+	var st ServerStatus
+	for _, line := range strings.Split(out, "\n") {
+		m := listRe.FindStringSubmatch(strings.TrimSpace(line))
+		if m == nil {
+			continue
+		}
+		name := strings.ReplaceAll(m[1], `\"`, `"`)
+		st.Scripts = append(st.Scripts, name)
+		if m[2] != "" {
+			st.Active = name
+		}
+		if name == ours {
+			st.Exists = true
+		}
+	}
+	return st
 }
 
 // Remote publishes scripts with sieve-connect, fetching credentials from
@@ -122,9 +189,10 @@ func normalize(s string) string {
 var ErrDrift = errors.New("remote script differs from local file; reconcile with sieve-edit first")
 
 // Publish writes newText to localPath and makes it the active remote script:
-// drift check → backup + write → checkscript → upload → activate.
-// Any failure after the write restores the previous local file.
-func (r Remote) Publish(localPath, newText string) (log []string, err error) {
+// list → (drift check if ours exists) → backup + write → checkscript →
+// upload → activate. With no script on the server the first publish creates
+// it. Any failure after the write restores the previous local file.
+func (r Remote) Publish(localPath, newText string, opt PublishOptions) (log []string, err error) {
 	c, err := r.creds()
 	if err != nil {
 		return nil, fmt.Errorf("credentials: %w", err)
@@ -135,18 +203,24 @@ func (r Remote) Publish(localPath, newText string) (log []string, err error) {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	old := string(oldBytes)
-
-	remote, err := r.download(c)
+	st, err := r.status(c, string(oldBytes))
 	if err != nil {
-		if strings.TrimSpace(old) != "" {
-			return nil, fmt.Errorf("download remote script: %w", err)
-		}
-		log = append(log, "no remote script yet")
-	} else if normalize(remote) != normalize(old) {
-		return nil, ErrDrift
+		return nil, err
 	}
-	log = append(log, "remote matches local")
+	if err := checkSwitch(st, r.Script, opt); err != nil {
+		return nil, err
+	}
+	switch {
+	case !st.Exists:
+		log = append(log, fmt.Sprintf("no %q on server; creating it", r.Script))
+	case st.Drift:
+		return nil, ErrDrift
+	default:
+		log = append(log, "remote matches local")
+	}
+	if other := st.OtherActive(r.Script); other != "" {
+		log = append(log, fmt.Sprintf("replacing active script %q (confirmed)", other))
+	}
 
 	bak := localPath + ".bak"
 	if err := os.WriteFile(bak, oldBytes, 0o644); err != nil {
@@ -179,50 +253,35 @@ func (r Remote) Publish(localPath, newText string) (log []string, err error) {
 	return log, nil
 }
 
-// ServerStatus is what the server says about the configured script.
-type ServerStatus struct {
-	Scripts []string
-	Exists  bool
-	Active  bool
-	Drift   bool // remote text differs from localPath
-}
-
-// Status logs in, lists scripts and compares the remote script with
-// localPath. It runs the credential commands (may prompt).
-func (r Remote) Status(localPath string) (ServerStatus, error) {
-	var st ServerStatus
-	c, err := r.creds()
-	if err != nil {
-		return st, fmt.Errorf("credentials: %w", err)
-	}
-	defer c.wipe()
+// status lists scripts and, if ours exists, compares it with localText.
+func (r Remote) status(c *creds, localText string) (ServerStatus, error) {
 	out, err := r.run(c, "--list")
 	if err != nil {
-		return st, err
+		return ServerStatus{}, err
 	}
-	for _, line := range strings.Split(out, "\n") {
-		f := strings.Fields(line)
-		if len(f) == 0 {
-			continue
-		}
-		name := strings.Trim(f[0], `"`)
-		st.Scripts = append(st.Scripts, name)
-		if name == r.Script {
-			st.Exists = true
-			st.Active = strings.Contains(strings.ToLower(line), "active")
-		}
-	}
+	st := parseList(out, r.Script)
 	if !st.Exists {
 		return st, nil
 	}
 	remote, err := r.download(c)
 	if err != nil {
-		return st, err
+		return st, fmt.Errorf("download remote script: %w", err)
 	}
+	st.Drift = normalize(remote) != normalize(localText)
+	return st, nil
+}
+
+// Status logs in, lists scripts and compares ours with localPath. It runs
+// the credential commands (may prompt).
+func (r Remote) Status(localPath string) (ServerStatus, error) {
+	c, err := r.creds()
+	if err != nil {
+		return ServerStatus{}, fmt.Errorf("credentials: %w", err)
+	}
+	defer c.wipe()
 	local, err := os.ReadFile(localPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return st, err
+		return ServerStatus{}, err
 	}
-	st.Drift = normalize(remote) != normalize(string(local))
-	return st, nil
+	return r.status(c, string(local))
 }

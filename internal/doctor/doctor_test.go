@@ -146,19 +146,24 @@ func TestOnline(t *testing.T) {
 		st   sieve.ServerStatus
 		err  error
 		want Status
+		fix  string
 	}{
-		{sieve.ServerStatus{Exists: true, Active: true}, nil, OK},
-		{sieve.ServerStatus{Exists: true, Active: true, Drift: true}, nil, Warn},
-		{sieve.ServerStatus{Exists: true}, nil, Warn},
-		{sieve.ServerStatus{Scripts: []string{"other"}}, nil, Fail},
-		{sieve.ServerStatus{}, errors.New("auth failed"), Fail},
+		{sieve.ServerStatus{Exists: true, Active: "kolab"}, nil, OK, ""},
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Drift: true}, nil, Warn, "re-download"},
+		{sieve.ServerStatus{Exists: true}, nil, Warn, "activates"},
+		{sieve.ServerStatus{Exists: true, Active: "roundcube"}, nil, Warn, "confirm the switch"},
+		{sieve.ServerStatus{}, nil, Warn, "first apply"},                                              // no scripts at all
+		{sieve.ServerStatus{Scripts: []string{"old"}}, nil, Warn, "first apply"},                      // only inactive others
+		{sieve.ServerStatus{Scripts: []string{"rc"}, Active: "rc"}, nil, Fail, `sieve_script = "rc"`}, // never switch silently
+		{sieve.ServerStatus{}, errors.New("auth failed"), Fail, "credentials"},
 	}
 	for i, c := range cases {
 		e := healthy(t)
 		e.opts.Online = true
 		e.opts.RemoteStat = func() (sieve.ServerStatus, error) { return c.st, c.err }
-		if got := find(t, Run(e.cfg, e.opts), "server"); got.Status != c.want {
-			t.Errorf("case %d: %s (%s), want %s", i, got.Status.Symbol(), got.Detail, c.want.Symbol())
+		got := find(t, Run(e.cfg, e.opts), "server")
+		if got.Status != c.want || !strings.Contains(got.Fix, c.fix) {
+			t.Errorf("case %d: %s (%s; fix %q), want %s with fix containing %q", i, got.Status.Symbol(), got.Detail, got.Fix, c.want.Symbol(), c.fix)
 		}
 	}
 	// Offline never runs the server check.

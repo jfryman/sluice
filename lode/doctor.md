@@ -38,7 +38,7 @@ Exit code: 0 if nothing failed, 1 otherwise — scriptable before a real apply.
 | sync lock | real, sandbox | warn: `lock_file` absent (sync wrapper may not flock it → races); warn: held right now |
 | sandbox dir | sandbox | fail: invalid (`sandbox.Validate`: absolute, ends in `/sandbox`, no overlap) |
 | reflink | sandbox | skipped unless sandbox dir is valid and outside mail_root; warn: reflink copy from mail_root into sandbox parent fails → full copy; fail: not enough free space for a full copy |
-| server (online) | real | fail: login/list fails; fail: `sieve_script` missing; warn: not active; warn: remote ≠ local (drift) |
+| server (online) | real | fail: login/list fails; fail: `sieve_script` missing while **another script is active** (never switched off silently); warn: missing and nothing active (first apply creates it); warn: drift; warn: exists but another is active (REAL dialog asks to confirm the switch); warn: nothing active |
 
 Offline checks never run credential commands and never write inside `mail_root`: the reflink probe
 copies one message *out* of the maildir into a temp file in the sandbox dir's nearest existing

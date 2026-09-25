@@ -21,6 +21,9 @@ type Target struct {
 	SieveFile   string
 	Publisher   sieve.Publisher
 	Index       *index.Index // optional; kept in sync with moves when set
+	// AllowSwitchFrom is the other active script the user confirmed
+	// replacing (from a Status precheck); empty means never switch.
+	AllowSwitchFrom string
 }
 
 func (t Target) Cleaner() *cleanup.Cleaner {
@@ -94,6 +97,16 @@ func (r Report) Lines() []string {
 	return out
 }
 
+// ChangesSieve reports whether applying p would change t's sieve script
+// (i.e. whether a publish, and so a server precheck, is involved).
+func (t Target) ChangesSieve(p *Plan) bool {
+	if len(p.Rules) == 0 {
+		return false
+	}
+	cur, next, err := t.SieveDiff(p)
+	return err != nil || cur != next
+}
+
 // Apply publishes rule changes, then trashes every planned ref in one batch.
 // A publish failure aborts before any mail moves.
 func Apply(p *Plan, t Target) (Report, error) {
@@ -107,7 +120,7 @@ func Apply(p *Plan, t Target) (Report, error) {
 		if cur == next {
 			rep.RulesSame = true
 		} else {
-			log, err := t.Publisher.Publish(t.SieveFile, next)
+			log, err := t.Publisher.Publish(t.SieveFile, next, sieve.PublishOptions{AllowSwitchFrom: t.AllowSwitchFrom})
 			rep.RuleLog = log
 			if err != nil {
 				return rep, fmt.Errorf("publish: %w", err)

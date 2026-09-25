@@ -14,6 +14,22 @@ Related: [architecture.md](architecture.md), [practices.md](practices.md), [appl
 | `make dev-reset` | `sluice -reset-sandbox -scan` — re-clone from current real mail (~3 s) |
 | `make run` / `make scan` | real mail (still plan-first: nothing changes until an apply) |
 | `make install` | `check`, then install to `~/.local/bin/sluice` |
+| `make version` | print the version the next build will be stamped with |
+
+## Versioning
+`internal/version` holds `Version`, `Commit`, `Branch`, `Date`, stamped by the Makefile with
+`-ldflags -X` from git:
+
+```make
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)   # v0.1.0-3-gabc1234-dirty
+COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null)
+BRANCH  := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null)
+DATE    := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+```
+Unstamped builds (`go build`, `go run`) fall back to `runtime/debug.ReadBuildInfo` (`vcs.revision`,
+`vcs.modified`, `vcs.time`); branch is then unknown. The binary target always relinks so a new
+commit/tag is picked up even when no `.go` file changed. Releases are tags `vMAJOR.MINOR.PATCH`.
+Shown by `sluice version` / `-version`, `:version`, and the first line of `sluice doctor`.
 
 User-facing docs live in `README.md` (install, quick start, keys, config, file locations); keep it in
 sync when flags, keys, config keys or paths change.

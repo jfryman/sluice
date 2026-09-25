@@ -28,23 +28,49 @@ cmd.ExtraFiles = []*os.File{r}
 
 Server: config `sieve_server` (default `imap.kolabnow.com`), script name `sieve_script` (default `kolab`).
 
+## Server model
+ManageSieve has no partial edits: a publish uploads the **whole** script (hand-written text preserved
+byte-for-byte, managed block regenerated) and activates it. Exactly one script can be active.
+`--list` prints the server's raw lines: `"name"` or `"name" ACTIVE`; nothing when there are no scripts.
+
+```go
+type ServerStatus struct {
+  Scripts []string
+  Active  string // name of the active script, "" if none
+  Exists  bool   // sieve_script is on the server
+  Drift   bool   // exists and differs from the local file
+}
+type PublishOptions struct{ AllowSwitchFrom string } // active script the user agreed to replace
+```
+
+| server state | Status / doctor `-online` | Publish |
+|---|---|---|
+| ours exists, active, matches local | ✓ | normal |
+| ours exists, differs from local | ! drift | stop (`ErrDrift`) |
+| no scripts / ours missing, nothing active | ! "first apply will create + activate" | **first publish**: no drift check; upload local+plan, activate |
+| ours missing, **another script active** | ✗ "set `sieve_script` to it or deactivate it" | stop (`ErrOtherActive`), never switch it off |
+| ours exists, not active, nothing active | ! not active | activates ours |
+| ours exists, **another active** | ! "applying makes ours active instead of X" | stop unless `AllowSwitchFrom == X` (confirmed in the REAL dialog) |
+
 ## Publish flow
 ```mermaid
 sequenceDiagram
   participant T as TUI
   participant R as remote
-  participant K as KolabNow
-  T->>T: render new text, show diff, wait for "y"
-  T->>R: Publish(new)
-  R->>K: --download kolab (to temp file)
-  R->>R: compare remote vs local kolab.sieve (before edit)
-  alt drift
-    R-->>T: error "remote differs from local; run sieve-edit to reconcile"
+  participant K as server
+  T->>R: Status() (REAL confirm precheck, only when rules change)
+  R->>K: --list (+ --download ours if present)
+  T->>T: REAL dialog shows server facts; y → Apply with AllowSwitchFrom
+  T->>R: Publish(new, opts)
+  R->>K: --list again (state may have changed)
+  alt another active and not allowed / ours missing but other active
+    R-->>T: ErrOtherActive
+  end
+  opt ours exists
+    R->>K: --download ours; compare with local → ErrDrift on mismatch
   end
   R->>R: write kolab.sieve.bak, write new kolab.sieve
-  R->>K: --checkscript --localsieve kolab.sieve
-  R->>K: --upload kolab.sieve --remotesieve kolab
-  R->>K: --activate kolab
+  R->>K: --checkscript, --upload, --activate
 ```
 
 `checkscript` needs the server's VERSION capability; if sieve-connect's error mentions VERSION the

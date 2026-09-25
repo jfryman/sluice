@@ -75,3 +75,4 @@ after a real apply (restoring an archived plan would re-apply it). Edits made by
 | `:discard` | discard plan (confirm) |
 | `:undo` · `:redo` · `:rescan` · `:tab N` · `:help` | as keys |
 | `:doctor` | offline requirement report for this environment in a dialog |
+| `:version` | build version / commit / branch in the status line |

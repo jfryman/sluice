@@ -31,6 +31,7 @@ flowchart TD
 | `internal/sieve`   | managed block edit, `Publisher` (sieve-connect / file) | [sieve/managed-block.md](sieve/managed-block.md), [sieve/remote.md](sieve/remote.md) |
 | `internal/plan`    | plan model, persistence, apply to a target | [apply/plan.md](apply/plan.md) |
 | `internal/sandbox` | full reflink clone environment | [apply/sandbox.md](apply/sandbox.md) |
+| `internal/version` | build metadata (ldflags-stamped, VCS fallback) | [development.md](development.md#versioning) |
 | `internal/doctor`  | requirement checks → capabilities + fixes | [doctor.md](doctor.md) |
 | `internal/tui`     | Bubble Tea screens | [tui/summary.md](tui/summary.md) |
 
@@ -66,5 +67,6 @@ CLI:
 | `-apply [-yes]` | print plan, confirm on stdin (unless `-yes`), apply to the selected env, print report; real applies archive the plan |
 | `-plan PATH` | use another plan file |
 | `-config PATH` | config file |
+| `version` / `-version` | print build metadata (see [development.md](development.md#versioning)) |
 | `doctor [-online]` | subcommand (dispatched before flag parsing): requirement report, exit 1 on failure — see [doctor.md](doctor.md) |
 Build/test/sandbox: see [development.md](development.md) (`make`, `make watch`, `make dev`).

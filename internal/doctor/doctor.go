@@ -289,7 +289,11 @@ func (d *run) credentials() {
 			"set user_cmd / pass_cmd to commands that print your mail username / password (run `sluice doctor -online` to test them)")
 		return
 	}
-	d.add("credentials", OK, realOnly, strings.Join(d.cfg.UserCmd, " ")+" / "+strings.Join(d.cfg.PassCmd, " ")+" (not run; use -online)", "")
+	how := " (not run; use -online)"
+	if d.o.Online {
+		how = " (used by the server check below)"
+	}
+	d.add("credentials", OK, realOnly, strings.Join(d.cfg.UserCmd, " ")+" / "+strings.Join(d.cfg.PassCmd, " ")+how, "")
 }
 
 func (d *run) mbsync() {
@@ -415,21 +419,29 @@ func (d *run) server() {
 		stat = func() (sieve.ServerStatus, error) { return r.Status(d.cfg.SieveFile) }
 	}
 	st, err := stat()
+	ours, srv := d.cfg.SieveScript, d.cfg.SieveServer
+	other := st.OtherActive(ours)
 	switch {
 	case err != nil:
 		d.add("server", Fail, realOnly, err.Error(),
 			"check sieve_server, and that user_cmd/pass_cmd print valid credentials")
+	case !st.Exists && other != "":
+		d.add("server", Fail, realOnly, fmt.Sprintf("%q not on %s, and %q is the active script", ours, srv, other),
+			fmt.Sprintf("set sieve_script = %q to manage that script, or deactivate it; sluice never switches it off silently", other))
 	case !st.Exists:
-		d.add("server", Fail, realOnly, fmt.Sprintf("script %q not on %s (have: %s)", d.cfg.SieveScript, d.cfg.SieveServer, orNone(st.Scripts)),
-			"set sieve_script to your active script's name, or upload one first")
+		d.add("server", Warn, realOnly, fmt.Sprintf("%q not on %s (scripts: %s); the first apply will create and activate it", ours, srv, orNone(st.Scripts)),
+			"nothing to fix if that's intended: the first apply uploads "+d.cfg.SieveFile+" plus the plan")
 	case st.Drift:
 		d.add("server", Warn, realOnly, "remote script differs from "+d.cfg.SieveFile+"; applies will stop at the drift check",
 			"re-download the active script (e.g. `sieve-edit`) so local matches the server")
-	case !st.Active:
-		d.add("server", Warn, realOnly, fmt.Sprintf("script %q exists but is not active", d.cfg.SieveScript),
-			"activate it (publishing through sluice also activates it)")
+	case other != "":
+		d.add("server", Warn, realOnly, fmt.Sprintf("%q exists but %q is active; applying makes %q active instead", ours, other, ours),
+			"the REAL apply dialog asks you to confirm the switch; or set sieve_script = "+fmt.Sprintf("%q", other))
+	case st.Active == "":
+		d.add("server", Warn, realOnly, fmt.Sprintf("%q exists but no script is active", ours),
+			"nothing to fix: the next apply activates it")
 	default:
-		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active, matches local", d.cfg.SieveServer, d.cfg.SieveScript), "")
+		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active, matches local", srv, ours), "")
 	}
 }
 

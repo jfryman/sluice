@@ -854,17 +854,64 @@ func (m *Model) openApply() {
 		}})
 	}
 	acts = append(acts, action{"r", "apply to REAL…", func() tea.Cmd {
-		warn := []string{
-			fmt.Sprintf("This moves %d real messages and publishes to %s.", m.plan.Messages(), m.d.Target.Publisher.Describe()),
-			"mbsync propagates the moves on its next run. U undoes the trash batch (not the rules).",
-			"", m.validatedLine(),
+		if !m.d.Target.ChangesSieve(m.plan) {
+			m.confirmReal(nil)
+			return nil
 		}
-		m.openDialog("Apply plan to REAL mail and server?", warn, action{"y", "apply to real", func() tea.Cmd {
-			return tea.Batch(m.startBusy("applying plan to real"), m.applyTo(m.d.Target, nil))
-		}})
-		return nil
+		pub, local := m.d.Target.Publisher, m.d.Config.SieveFile
+		return tea.Batch(m.startBusy("checking the Sieve server"), func() tea.Msg {
+			st, err := pub.Status(local)
+			return precheckMsg{st, err}
+		})
 	}})
 	m.openDialog("Apply plan", lines, acts...)
+}
+
+type precheckMsg struct {
+	st  sieve.ServerStatus
+	err error
+}
+
+// confirmReal opens the final REAL confirmation. st is the server precheck
+// (nil when the plan doesn't change the sieve script). Unsafe server states
+// get an informational dialog with no apply action.
+func (m *Model) confirmReal(st *sieve.ServerStatus) {
+	ours := m.d.Config.SieveScript
+	lines := []string{
+		fmt.Sprintf("This moves %d real messages and publishes to %s.", m.plan.Messages(), m.d.Target.Publisher.Describe()),
+		"mbsync propagates the moves on its next run. U undoes the trash batch (not the rules).",
+		"",
+	}
+	target := m.d.Target
+	if st != nil {
+		other := st.OtherActive(ours)
+		switch {
+		case !st.Exists && other != "":
+			m.openDialog("Can't apply: another script is active", []string{
+				sieve.ErrOtherActive{Ours: ours, Active: other}.Error(),
+				"", "Nothing was changed. `sluice doctor -online` shows the server state.",
+			})
+			return
+		case st.Drift:
+			m.openDialog("Can't apply: server script differs from local", []string{
+				fmt.Sprintf("%q on the server doesn't match %s.", ours, m.d.Config.SieveFile),
+				"Re-download it (e.g. `sieve-edit`) so local matches the server, then apply again.",
+				"", "Nothing was changed.",
+			})
+			return
+		case !st.Exists:
+			lines = append(lines, fmt.Sprintf("⚠ server has no %q: this first apply creates it from %s plus the plan, and activates it.", ours, m.d.Config.SieveFile))
+		case other != "":
+			lines = append(lines, fmt.Sprintf("⚠ %q is the active script now: applying makes %q active instead (switching %q off).", other, ours, other))
+			target.AllowSwitchFrom = other
+		default:
+			lines = append(lines, fmt.Sprintf("✓ server: %q matches local", ours))
+		}
+	}
+	lines = append(lines, m.validatedLine())
+	m.openDialog("Apply plan to REAL mail and server?", lines, action{"y", "apply to real", func() tea.Cmd {
+		return tea.Batch(m.startBusy("applying plan to real"), m.applyTo(target, nil))
+	}})
 }
 
 type doctorMsg struct{ lines []string }

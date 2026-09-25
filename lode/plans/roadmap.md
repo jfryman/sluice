@@ -4,7 +4,9 @@
 Index, candidates, search, plan-first staging, full reflink sandbox, apply (sandbox/real, TUI and
 headless), trash + undo — implemented and tested (`go test ./...`, tmux-driven sandbox runs).
 Not yet exercised against the live server: a real apply (sieve-connect publish + real trash batch).
-First real apply checklist: `sluice doctor -online` all ✓ (expect a 1Password prompt from
+Server state (2026-09-24): KolabNow has **no Sieve scripts**, so the first real apply creates and
+activates `kolab` from the local file plus the plan (the hand-written `Newsletters` rule goes live
+too). First real apply checklist: `sluice doctor -online` shows no ✗ (expect a 1Password prompt from
 `mail-pass`) → plan one rule + a small trash batch → `A`→`s` validate → `A`→`r`→`y` → after the
 next `mail-sync`, confirm the server's trash and active script.
 
@@ -15,6 +17,8 @@ next `mail-sync`, confirm the server's trash and active script.
 - Pattern rules (subject contains, header regex) beyond exact list/domain/sender.
 - Browse the sandbox from real mode without a second process (swap Deps in-app).
 - Plan export/import to named files beyond `-plan PATH`.
+- `sluice pull`: adopt the server script as local after drift (with backup).
+- Warn when a hand-written rule outside the managed block mentions the same sender as a managed rule.
 - notmuch integration as an alternative index backend.
 - Use KolabNow's spam verdict (`***SPAM***` subject prefix / X-Spam headers) as a score signal and a
   one-key "trash everything the server already flagged" search preset.

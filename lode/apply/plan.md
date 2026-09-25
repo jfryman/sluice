@@ -40,6 +40,14 @@ modes so a plan built in either can be applied to either). `-plan PATH` override
 - Applying to real archives the plan to `$XDG_STATE_HOME/sluice/applied/<ts>.json` and resets it
   to empty. Sandbox applies never consume the plan.
 
+## Server precheck (real)
+When the plan changes the sieve script (`Target.ChangesSieve`), the REAL confirmation first runs
+`Publisher.Status` and shows the server facts. Drift, or our script missing while another is
+active, turn the dialog into an info box with no apply key. If another script is active and ours
+exists, the dialog warns and `y` sets `Target.AllowSwitchFrom` to that name, which `Publish`
+re-verifies against a fresh `--list`. Headless `-apply` does the same; `-yes` refuses a switch.
+See [../sieve/remote.md](../sieve/remote.md#server-model).
+
 ## Apply (`plan.Apply(p, target) Report`)
 1. Rules: read target sieve file → `sieve.Parse` → apply ops → render. If text changed, publish via the
    target's publisher (real: sieve-connect; sandbox: file publisher). Publish failure aborts the

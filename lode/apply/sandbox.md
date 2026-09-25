@@ -41,6 +41,11 @@ sequenceDiagram
 Refresh happens on first `-sandbox` launch, on `-reset-sandbox`, and **every time a plan is applied
 to the sandbox from real mode**, so validation always runs against current mail.
 
+## Limits
+The sandbox "server" is seeded from the local sieve file, so it always looks like "ours exists and
+matches". It can't rehearse first-publish or active-script situations on the real server; those
+are covered by the REAL precheck and `sluice doctor -online`.
+
 ## Invariants
 - Refresh refuses unless `Dir` is absolute, ends in a path element named `sandbox`, and neither
   contains nor is contained by `mail_root`. Deletions only ever target `Dir/Mail*`, `Dir/cache`,

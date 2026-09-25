@@ -22,6 +22,7 @@ import (
 	"github.com/jfryman/sluice/internal/sandbox"
 	"github.com/jfryman/sluice/internal/sieve"
 	"github.com/jfryman/sluice/internal/tui"
+	"github.com/jfryman/sluice/internal/version"
 )
 
 type opts struct {
@@ -31,8 +32,14 @@ type opts struct {
 }
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "doctor" {
-		os.Exit(doctorCmd(os.Args[2:]))
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "doctor":
+			os.Exit(doctorCmd(os.Args[2:]))
+		case "version", "-version", "--version":
+			fmt.Println(version.Long())
+			return
+		}
 	}
 	var o opts
 	flag.StringVar(&o.cfgPath, "config", config.DefaultPath(), "config file")
@@ -43,7 +50,7 @@ func main() {
 	flag.BoolVar(&o.apply, "apply", false, "apply the plan headlessly to the selected environment and exit")
 	flag.BoolVar(&o.yes, "yes", false, "with -apply: don't ask for confirmation")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n\nFlags:\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "%s\n\nUsage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n       sluice version\n\nFlags:\n", version.Short())
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -135,6 +142,7 @@ func doctorCmd(args []string) int {
 		cfg, _ = config.Load(filepath.Join(os.TempDir(), "sluice-no-config.toml")) // defaults
 	}
 	rep := doctor.Run(cfg, doctor.Options{Online: *online, ConfigPath: *cfgPath, ConfigErr: cfgErr})
+	fmt.Println(version.Short())
 	for _, l := range rep.Lines() {
 		fmt.Println(colorize(l))
 	}
@@ -185,6 +193,30 @@ func applyHeadless(realCfg config.Config, t plan.Target, yes bool) error {
 		fmt.Printf("  ✓ validated in sandbox %s\n", p.Validated.Format("2006-01-02 15:04"))
 	} else {
 		fmt.Println("  ⚠ not validated in sandbox since last change")
+	}
+	if t.ChangesSieve(p) {
+		st, err := t.Publisher.Status(t.SieveFile)
+		if err != nil {
+			return fmt.Errorf("sieve server precheck: %w", err)
+		}
+		ours := realCfg.SieveScript
+		other := st.OtherActive(ours)
+		switch {
+		case !st.Exists && other != "":
+			return sieve.ErrOtherActive{Ours: ours, Active: other}
+		case st.Drift:
+			return sieve.ErrDrift
+		case !st.Exists:
+			fmt.Printf("  ! no %q on the server: this apply creates and activates it\n", ours)
+		case other != "":
+			if yes {
+				return fmt.Errorf("%q is the active script; switching to %q needs interactive confirmation (drop -yes)", other, ours)
+			}
+			fmt.Printf("  ! %q is active: applying makes %q active instead\n", other, ours)
+			t.AllowSwitchFrom = other
+		default:
+			fmt.Printf("  ✓ server: %q matches local\n", ours)
+		}
 	}
 	if !yes {
 		fmt.Printf("Apply to %s? [y/N] ", t.Name)
