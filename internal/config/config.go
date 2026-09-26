@@ -22,16 +22,26 @@ type Config struct {
 	SieveFile        string   `toml:"sieve_file"`
 	SieveServer      string   `toml:"sieve_server"`
 	SieveScript      string   `toml:"sieve_script"`
-	SieveConnect     string   `toml:"sieve_connect"` // binary; overridable for the dev sandbox
+	SievePort        int      `toml:"sieve_port"`
+	User             string   `toml:"user"` // if set, user_cmd is not run
 	UserCmd          []string `toml:"user_cmd"`
 	PassCmd          []string `toml:"pass_cmd"`
 
 	SandboxDir string `toml:"sandbox_dir"`
+	// TrainingFolder is the drop-to-block folder `sluice sweep` watches.
+	TrainingFolder string `toml:"training_folder"`
+	// SentFolders hold mail James sent; their recipients are never auto-blocked.
+	SentFolders []string `toml:"sent_folders"`
+	// SweepInterval is the watch-mode rescan fallback (Go duration).
+	SweepInterval string `toml:"sweep_interval"`
+	// PostSweepCmd runs after a sweep moved local mail (e.g. ["mail-sync"]).
+	PostSweepCmd []string `toml:"post_sweep_cmd"`
 
 	// Derived, not configurable.
 	IndexPath   string `toml:"-"`
 	JournalPath string `toml:"-"`
 	PlanPath    string `toml:"-"` // shared by real and sandbox modes
+	SweepLog    string `toml:"-"` // sweep outcomes (JSONL)
 	AppliedDir  string `toml:"-"` // archive of plans applied to real
 }
 
@@ -50,10 +60,15 @@ func Default() Config {
 		SieveFile:        "~/.config/sieve/kolab.sieve",
 		SieveServer:      "imap.kolabnow.com",
 		SieveScript:      "kolab",
-		SieveConnect:     "sieve-connect",
+		SievePort:        4190,
+		User:             "james@fryman.io",
 		UserCmd:          []string{"mail-user"},
 		PassCmd:          []string{"mail-pass"},
 		SandboxDir:       filepath.Join(xdg("XDG_DATA_HOME", ".local/share"), "sluice", "sandbox"),
+		TrainingFolder:   "+Sluice",
+		SentFolders:      []string{"Sent Messages", "Sent Items"},
+		SweepInterval:    "5m",
+		PostSweepCmd:     []string{"mail-sync"},
 	}
 }
 
@@ -73,13 +88,13 @@ func Load(path string) (Config, error) {
 	c.MailRoot = Expand(c.MailRoot)
 	c.LockFile = Expand(c.LockFile)
 	c.SieveFile = Expand(c.SieveFile)
-	c.SieveConnect = Expand(c.SieveConnect)
 	c.IndexPath = filepath.Join(xdg("XDG_CACHE_HOME", ".cache"), "sluice", "index.db")
 	c.SandboxDir = Expand(c.SandboxDir)
 	state := filepath.Join(xdg("XDG_STATE_HOME", ".local/state"), "sluice")
 	c.JournalPath = filepath.Join(state, "journal.jsonl")
 	c.PlanPath = filepath.Join(state, "plan.json")
 	c.AppliedDir = filepath.Join(state, "applied")
+	c.SweepLog = filepath.Join(state, "sweep.jsonl")
 	return c, nil
 }
 

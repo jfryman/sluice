@@ -20,6 +20,12 @@ CREATE TABLE messages (
 );
 ```
 
+## Sent mail: correspondents and identities
+Folders in `sent_folders` are excluded from `messages` but scanned into `sent(key, from_addr, rcpts)`
+(incremental by key). When it changes, `correspondents` (every To/Cc/Bcc address) and `identities`
+(every From) are rebuilt. `index.Known(addr)` answers "own address / someone you've sent mail to" —
+the sweep hold guard.
+
 ## Incremental scan
 ```mermaid
 flowchart TD

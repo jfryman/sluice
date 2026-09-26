@@ -2,13 +2,18 @@ package sieve
 
 import (
 	"bytes"
+	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"regexp"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/jfryman/sluice/internal/timing"
 )
 
 // Publisher makes newText the active script, keeping localPath in sync.
@@ -61,47 +66,28 @@ func checkSwitch(st ServerStatus, ours string, opt PublishOptions) error {
 	return ErrOtherActive{Ours: ours, Active: other}
 }
 
-var listRe = regexp.MustCompile(`^"((?:[^"\\]|\\.)*)"\s*(ACTIVE)?`)
-
-// parseList reads sieve-connect --list output (raw LISTSCRIPTS lines).
-func parseList(out, ours string) ServerStatus {
-	var st ServerStatus
-	for _, line := range strings.Split(out, "\n") {
-		m := listRe.FindStringSubmatch(strings.TrimSpace(line))
-		if m == nil {
-			continue
-		}
-		name := strings.ReplaceAll(m[1], `\"`, `"`)
-		st.Scripts = append(st.Scripts, name)
-		if m[2] != "" {
-			st.Active = name
-		}
-		if name == ours {
-			st.Exists = true
-		}
-	}
-	return st
-}
-
-// Remote publishes scripts with sieve-connect, fetching credentials from
-// helper commands exactly like ~/.local/bin/sieve-edit. See lode/sieve/remote.md.
+// Remote publishes to a ManageSieve server with the native client: one
+// session (TLS + login) per operation. See lode/sieve/remote.md.
 type Remote struct {
-	Bin     string // sieve-connect executable; "" means "sieve-connect" on PATH
-	Server  string
+	Server  string // host name (also the TLS server name)
+	Port    int    // default 4190
 	Script  string
-	UserCmd []string
-	PassCmd []string
+	User    string        // username; if empty, the output of UserCmd
+	UserCmd []string      // e.g. ["mail-user"]
+	PassCmd []string      // e.g. ["mail-pass"]
+	TLS     *tls.Config   // optional override (tests); default: system roots, ServerName=Server
+	Timeout time.Duration // per network step; default 60s
+	Trace   *timing.Recorder
 }
 
-type creds struct {
-	user string
-	pass []byte
-}
+func (r Remote) Describe() string { return r.Server + " as " + r.Script }
 
-func (c *creds) wipe() {
-	for i := range c.pass {
-		c.pass[i] = 0
+func (r Remote) addr() string {
+	port := r.Port
+	if port == 0 {
+		port = 4190
 	}
+	return net.JoinHostPort(r.Server, strconv.Itoa(port))
 }
 
 func output(argv []string) ([]byte, error) {
@@ -118,63 +104,70 @@ func output(argv []string) ([]byte, error) {
 	return bytes.TrimRight(out, "\r\n"), nil
 }
 
-func (r Remote) Describe() string { return r.Server + " as " + r.Script }
-
-func (r Remote) creds() (*creds, error) {
-	u, err := output(r.UserCmd)
-	if err != nil {
-		return nil, err
+// session runs fn inside one authenticated connection.
+func (r Remote) session(fn func(c *Client) error) error {
+	user := r.User
+	if user == "" {
+		done := r.Trace.Time("user")
+		u, err := output(r.UserCmd)
+		done()
+		if err != nil {
+			return fmt.Errorf("credentials: %w", err)
+		}
+		user = string(u)
 	}
-	p, err := output(r.PassCmd)
+	done := r.Trace.Time("pass")
+	pass, err := output(r.PassCmd)
+	done()
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("credentials: %w", err)
 	}
-	return &creds{user: string(u), pass: p}, nil
+	defer func() {
+		for i := range pass {
+			pass[i] = 0
+		}
+	}()
+	cfg := r.TLS
+	if cfg == nil {
+		cfg = &tls.Config{ServerName: r.Server, MinVersion: tls.VersionTLS12}
+	}
+	c, err := Dial(context.Background(), r.addr(), cfg, r.Timeout, r.Trace)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if err := c.AuthPlain(user, pass); err != nil {
+		return err
+	}
+	if err := fn(c); err != nil {
+		c.Logout()
+		return err
+	}
+	return c.Logout()
 }
 
-// run invokes sieve-connect with the password on fd 3 (never on disk or argv).
-func (r Remote) run(c *creds, args ...string) (string, error) {
-	base := []string{"--server", r.Server, "--user", c.user, "--passwordfd", "3"}
-	bin := r.Bin
-	if bin == "" {
-		bin = "sieve-connect"
-	}
-	cmd := exec.Command(bin, append(base, args...)...)
-	pr, pw, err := os.Pipe()
+// serverStatus lists scripts and, if ours exists, compares it with localText.
+func (r Remote) serverStatus(c *Client, localText string) (ServerStatus, error) {
+	var st ServerStatus
+	names, active, err := c.List()
 	if err != nil {
-		return "", err
+		return st, err
 	}
-	cmd.ExtraFiles = []*os.File{pr}
-	var out bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &out
-	if err := cmd.Start(); err != nil {
-		pr.Close()
-		pw.Close()
-		return "", err
+	st.Scripts, st.Active = names, active
+	for _, n := range names {
+		if n == r.Script {
+			st.Exists = true
+		}
 	}
-	pr.Close()
-	// --passwordfd reads until the newline before EOF.
-	pw.Write(append(append([]byte{}, c.pass...), '\n'))
-	pw.Close()
-	err = cmd.Wait()
+	if !st.Exists {
+		return st, nil
+	}
+	remote, err := c.Get(r.Script)
 	if err != nil {
-		return out.String(), fmt.Errorf("sieve-connect %s: %w: %s", args[0], err, strings.TrimSpace(out.String()))
+		return st, err
 	}
-	return out.String(), nil
-}
-
-func (r Remote) download(c *creds) (string, error) {
-	dir, err := os.MkdirTemp("", "sluice-sieve-")
-	if err != nil {
-		return "", err
-	}
-	defer os.RemoveAll(dir)
-	path := filepath.Join(dir, r.Script+".sieve")
-	if _, err := r.run(c, "--download", "--remotesieve", r.Script, "--localsieve", path); err != nil {
-		return "", err
-	}
-	b, err := os.ReadFile(path)
-	return string(b), err
+	st.Drift = normalize(remote) != normalize(localText)
+	return st, nil
 }
 
 func normalize(s string) string {
@@ -188,100 +181,80 @@ func normalize(s string) string {
 // ErrDrift means the server's script is not what the local file says.
 var ErrDrift = errors.New("remote script differs from local file; reconcile with sieve-edit first")
 
-// Publish writes newText to localPath and makes it the active remote script:
-// list → (drift check if ours exists) → backup + write → checkscript →
-// upload → activate. With no script on the server the first publish creates
-// it. Any failure after the write restores the previous local file.
+// Publish writes newText to localPath and makes it the active remote script,
+// in one session: list → (drift check if ours exists) → backup + write →
+// CHECKSCRIPT (if VERSION) → PUTSCRIPT → SETACTIVE. With no script on the
+// server the first publish creates it. Any failure after the local write
+// before a successful upload restores the previous local file.
 func (r Remote) Publish(localPath, newText string, opt PublishOptions) (log []string, err error) {
-	c, err := r.creds()
+	unlock, err := lockLocal(localPath)
 	if err != nil {
-		return nil, fmt.Errorf("credentials: %w", err)
+		return nil, err
 	}
-	defer c.wipe()
-
+	defer unlock()
 	oldBytes, err := os.ReadFile(localPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	st, err := r.status(c, string(oldBytes))
-	if err != nil {
-		return nil, err
-	}
-	if err := checkSwitch(st, r.Script, opt); err != nil {
-		return nil, err
-	}
-	switch {
-	case !st.Exists:
-		log = append(log, fmt.Sprintf("no %q on server; creating it", r.Script))
-	case st.Drift:
-		return nil, ErrDrift
-	default:
-		log = append(log, "remote matches local")
-	}
-	if other := st.OtherActive(r.Script); other != "" {
-		log = append(log, fmt.Sprintf("replacing active script %q (confirmed)", other))
-	}
-
-	bak := localPath + ".bak"
-	if err := os.WriteFile(bak, oldBytes, 0o644); err != nil {
-		return log, err
-	}
-	if err := os.WriteFile(localPath, []byte(newText), 0o644); err != nil {
-		return log, err
-	}
-	restore := func() { os.WriteFile(localPath, oldBytes, 0o644) }
-
-	if out, err := r.run(c, "--checkscript", "--localsieve", localPath); err != nil {
-		// Servers without a VERSION capability can't CHECKSCRIPT; PUTSCRIPT still validates.
-		if !strings.Contains(strings.ToUpper(out), "VERSION") {
-			restore()
-			return log, fmt.Errorf("server rejected script: %w", err)
+	err = r.session(func(c *Client) error {
+		st, err := r.serverStatus(c, string(oldBytes))
+		if err != nil {
+			return err
 		}
-		log = append(log, "checkscript unsupported; relying on upload validation")
-	} else {
-		log = append(log, "server validated script")
-	}
-	if _, err := r.run(c, "--upload", "--localsieve", localPath, "--remotesieve", r.Script); err != nil {
-		restore()
-		return log, err
-	}
-	log = append(log, "uploaded "+r.Script)
-	if _, err := r.run(c, "--activate", "--remotesieve", r.Script); err != nil {
-		return log, fmt.Errorf("uploaded but activation failed: %w", err)
-	}
-	log = append(log, "activated "+r.Script)
-	return log, nil
-}
-
-// status lists scripts and, if ours exists, compares it with localText.
-func (r Remote) status(c *creds, localText string) (ServerStatus, error) {
-	out, err := r.run(c, "--list")
-	if err != nil {
-		return ServerStatus{}, err
-	}
-	st := parseList(out, r.Script)
-	if !st.Exists {
-		return st, nil
-	}
-	remote, err := r.download(c)
-	if err != nil {
-		return st, fmt.Errorf("download remote script: %w", err)
-	}
-	st.Drift = normalize(remote) != normalize(localText)
-	return st, nil
+		if err := checkSwitch(st, r.Script, opt); err != nil {
+			return err
+		}
+		switch {
+		case !st.Exists:
+			log = append(log, fmt.Sprintf("no %q on server; creating it", r.Script))
+		case st.Drift:
+			return ErrDrift
+		default:
+			log = append(log, "remote matches local")
+		}
+		if other := st.OtherActive(r.Script); other != "" {
+			log = append(log, fmt.Sprintf("replacing active script %q (confirmed)", other))
+		}
+		if err := os.WriteFile(localPath+".bak", oldBytes, 0o644); err != nil {
+			return err
+		}
+		if err := os.WriteFile(localPath, []byte(newText), 0o644); err != nil {
+			return err
+		}
+		restore := func() { os.WriteFile(localPath, oldBytes, 0o644) }
+		if c.HasCap("VERSION") {
+			if err := c.Check(newText); err != nil {
+				restore()
+				return fmt.Errorf("server rejected script: %w", err)
+			}
+			log = append(log, "server validated script")
+		}
+		if err := c.Put(r.Script, newText); err != nil {
+			restore()
+			return err
+		}
+		log = append(log, "uploaded "+r.Script)
+		if err := c.SetActive(r.Script); err != nil {
+			return fmt.Errorf("uploaded but activation failed: %w", err)
+		}
+		log = append(log, "activated "+r.Script)
+		return nil
+	})
+	return log, err
 }
 
 // Status logs in, lists scripts and compares ours with localPath. It runs
 // the credential commands (may prompt).
 func (r Remote) Status(localPath string) (ServerStatus, error) {
-	c, err := r.creds()
-	if err != nil {
-		return ServerStatus{}, fmt.Errorf("credentials: %w", err)
-	}
-	defer c.wipe()
 	local, err := os.ReadFile(localPath)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return ServerStatus{}, err
 	}
-	return r.status(c, string(local))
+	var st ServerStatus
+	err = r.session(func(c *Client) error {
+		var err error
+		st, err = r.serverStatus(c, string(local))
+		return err
+	})
+	return st, err
 }

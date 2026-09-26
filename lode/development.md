@@ -14,6 +14,8 @@ Related: [architecture.md](architecture.md), [practices.md](practices.md), [appl
 | `make dev-reset` | `sluice -reset-sandbox -scan` — re-clone from current real mail (~3 s) |
 | `make run` / `make scan` | real mail (still plan-first: nothing changes until an apply) |
 | `make install` | `check`, then install to `~/.local/bin/sluice` |
+| `make install-service` | install + `make install` the binary, copy `contrib/systemd/sluice-sweep.service` to `~/.config/systemd/user`, enable and (re)start it — **run on the machine that should host sweep, not the dev box** |
+| `make uninstall-service` / `make service-logs` | disable + remove the unit / follow its journal |
 | `make version` | print the version the next build will be stamped with |
 
 ## Versioning
@@ -50,6 +52,8 @@ flowchart LR
   (`internal/plan`, `internal/cleanup`, `internal/sandbox`).
 - For manual TUI runs against real mail, pass `-plan <scratch>.json` so the real plan file isn't
   edited; apply with `s` (sandbox) only.
+- Sweep: `bin/sluice sweep -sandbox -plan X.json` after copying a message into the sandbox's
+  `Mail/+Sluice/cur` (use `find … | xargs grep -il '^List-Id:'`; List-Id header case varies).
 - Headless: `bin/sluice -sandbox -plan X.json -apply -yes` applies to the sandbox and prints the report.
 - Drive the TUI in tmux (see [tui/summary.md](tui/summary.md#testing)). The first scan of a fresh
   sandbox index takes ~5 s; keys pressed while busy are ignored — wait for "indexed N messages".

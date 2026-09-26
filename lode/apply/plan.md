@@ -50,7 +50,7 @@ See [../sieve/remote.md](../sieve/remote.md#server-model).
 
 ## Apply (`plan.Apply(p, target) Report`)
 1. Rules: read target sieve file → `sieve.Parse` → apply ops → render. If text changed, publish via the
-   target's publisher (real: sieve-connect; sandbox: file publisher). Publish failure aborts the
+   target's publisher (real: native ManageSieve session; sandbox: file publisher). Publish failure aborts the
    whole apply before any mail moves.
 2. Trash: all refs from all items in **one** cleanup batch (so `U` undoes the entire apply).
    `Ref.Folder` + key are resolved against the target maildir (paths are never trusted).

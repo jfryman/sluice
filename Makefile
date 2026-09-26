@@ -18,7 +18,8 @@ VPKG     := github.com/jfryman/sluice/internal/version
 LDFLAGS  := -X $(VPKG).Version=$(VERSION) -X $(VPKG).Commit=$(COMMIT) \
             -X $(VPKG).Branch=$(BRANCH) -X $(VPKG).Date=$(DATE)
 
-.PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install clean version $(BIN)
+.PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install clean version $(BIN) \
+        install-service uninstall-service service-logs
 
 all: check build
 
@@ -56,6 +57,25 @@ scan: build
 
 install: check build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/sluice
+
+# --- sweep service (systemd user unit) on the machine this is run on ---------
+
+UNIT_DIR := $(HOME)/.config/systemd/user
+UNIT     := sluice-sweep.service
+
+install-service: install
+	install -Dm 0644 contrib/systemd/$(UNIT) $(UNIT_DIR)/$(UNIT)
+	systemctl --user daemon-reload
+	systemctl --user enable --now $(UNIT)
+	systemctl --user restart $(UNIT)   # pick up a newly installed binary
+
+uninstall-service:
+	-systemctl --user disable --now $(UNIT)
+	rm -f $(UNIT_DIR)/$(UNIT)
+	systemctl --user daemon-reload
+
+service-logs:
+	journalctl --user -u $(UNIT) -f
 
 # --- sandbox: full reflink clone of real mail; see lode/apply/sandbox.md ----
 

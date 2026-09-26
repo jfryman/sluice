@@ -5,11 +5,14 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,6 +24,8 @@ import (
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sandbox"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/sweep"
+	"github.com/jfryman/sluice/internal/timing"
 	"github.com/jfryman/sluice/internal/tui"
 	"github.com/jfryman/sluice/internal/version"
 )
@@ -36,6 +41,8 @@ func main() {
 		switch os.Args[1] {
 		case "doctor":
 			os.Exit(doctorCmd(os.Args[2:]))
+		case "sweep":
+			os.Exit(sweepCmd(os.Args[2:]))
 		case "version", "-version", "--version":
 			fmt.Println(version.Long())
 			return
@@ -50,7 +57,7 @@ func main() {
 	flag.BoolVar(&o.apply, "apply", false, "apply the plan headlessly to the selected environment and exit")
 	flag.BoolVar(&o.yes, "yes", false, "with -apply: don't ask for confirmation")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s\n\nUsage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n       sluice version\n\nFlags:\n", version.Short())
+		fmt.Fprintf(flag.CommandLine.Output(), "%s\n\nUsage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n       sluice sweep [-watch] [-sandbox] [-plan PATH] [-config PATH]\n       sluice version\n\nFlags:\n", version.Short())
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -61,12 +68,19 @@ func main() {
 	}
 }
 
+// remoteFor builds the ManageSieve publisher for the real server.
+func remoteFor(c config.Config, trace *timing.Recorder) sieve.Remote {
+	return sieve.Remote{Server: c.SieveServer, Port: c.SievePort, Script: c.SieveScript,
+		User: c.User, UserCmd: c.UserCmd, PassCmd: c.PassCmd, Trace: trace}
+}
+
 func openIndex(c config.Config) (*index.Index, error) {
 	return index.Open(c.IndexPath, c.MailRoot, index.Folders{
 		Trash:     c.TrashFolder,
 		BlackHole: c.BlackHoleFolders,
 		News:      c.NewsFolders,
 		Exclude:   c.ExcludeFolders,
+		Sent:      c.SentFolders,
 	})
 }
 
@@ -85,8 +99,7 @@ func run(o opts) error {
 	}
 	sb := sandbox.New(realCfg)
 	sbCfg := sb.Config(realCfg)
-	realPub := sieve.Remote{Bin: realCfg.SieveConnect, Server: realCfg.SieveServer, Script: realCfg.SieveScript,
-		UserCmd: realCfg.UserCmd, PassCmd: realCfg.PassCmd}
+	realPub := remoteFor(realCfg, nil)
 	sbPub := sb.Publisher(realCfg)
 
 	env, cfg := "real", realCfg
@@ -128,6 +141,84 @@ func run(o opts) error {
 	}
 	_, err = tea.NewProgram(tui.New(deps), tea.WithAltScreen()).Run()
 	return err
+}
+
+// sweepCmd runs `sluice sweep`: once (exit 0 done, 3 mail moved, 1 error)
+// or, with -watch, as a long-running service until SIGINT/SIGTERM.
+func sweepCmd(args []string) int {
+	fs := flag.NewFlagSet("sweep", flag.ExitOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	watch := fs.Bool("watch", false, "keep running: sweep on new drops and every sweep_interval")
+	useSandbox := fs.Bool("sandbox", false, "operate on the sandbox clone")
+	planPath := fs.String("plan", "", "plan file for queued cleanup (default $XDG_STATE_HOME/sluice/plan.json)")
+	fs.Parse(args)
+
+	logf := func(format string, a ...any) {
+		fmt.Fprintf(os.Stderr, time.Now().Format("15:04:05")+" "+format+"\n", a...)
+	}
+	realCfg, err := config.Load(*cfgPath)
+	if err != nil {
+		logf("%v", err)
+		return 1
+	}
+	if *planPath != "" {
+		realCfg.PlanPath = config.Expand(*planPath)
+	}
+	cfg := realCfg
+	rec := &timing.Recorder{}
+	var pub sieve.Publisher = remoteFor(realCfg, rec)
+	if *useSandbox {
+		sb := sandbox.New(realCfg)
+		if !sb.Exists() {
+			if err := sb.Refresh(realCfg); err != nil {
+				logf("%v", err)
+				return 1
+			}
+		}
+		cfg, pub = sb.Config(realCfg), sb.Publisher(realCfg)
+		cfg.PostSweepCmd = nil // never kick the real sync from a sandbox sweep
+	}
+	ix, err := openIndex(cfg)
+	if err != nil {
+		logf("%v", err)
+		return 1
+	}
+	defer ix.Close()
+	d := sweep.Deps{Cfg: cfg, Index: ix, Publisher: pub, Timing: rec}
+	logf("%s", version.Short())
+
+	if *watch {
+		interval, err := time.ParseDuration(cfg.SweepInterval)
+		if err != nil {
+			logf("sweep_interval %q: %v", cfg.SweepInterval, err)
+			return 1
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := sweep.Watch(ctx, d, sweep.WatchOptions{Interval: interval, PostCmd: cfg.PostSweepCmd, Logf: logf}); err != nil {
+			logf("%v", err)
+			return 1
+		}
+		return 0
+	}
+	rep, err := sweep.Run(d)
+	for _, l := range rep.Summary() {
+		fmt.Println(l)
+	}
+	if rep.Timing != "" {
+		logf("timing: %s", rep.Timing)
+	}
+	if len(rep.Outcomes) == 0 && err == nil {
+		fmt.Printf("nothing in %s\n", cfg.TrainingFolder)
+	}
+	if err != nil {
+		logf("%v", err)
+		return 1
+	}
+	if rep.Changed() {
+		return 3
+	}
+	return 0
 }
 
 // doctorCmd runs `sluice doctor`; exit 1 if any check failed.

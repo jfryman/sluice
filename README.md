@@ -50,6 +50,33 @@ flowchart LR
   apply creates it. sluice never silently switches off a different active script: if one exists,
   the apply either stops or asks you to confirm the switch.
 
+## Drop to block: the `+Sluice` folder
+
+The easiest way to use sluice is from any mail client, including your phone. **Move an unwanted
+message into the `+Sluice` folder.** The sweep service notices it after the next sync and:
+
+1. **Adds a rule** so mail like it goes straight to the trash from now on. It matches the message's
+   mailing list (`List-Id`) if it has one, otherwise the exact sender address. It never blocks a
+   whole domain on its own.
+2. **Queues cleanup** of mail you already have from that list or sender, as a plan item you review
+   and apply like any other (`A` in the TUI).
+3. **Moves your dropped message to the trash**, so an empty `+Sluice` means everything's been handled.
+
+If the sender is someone you've sent mail to, or one of your own addresses, sluice doesn't publish
+anything. It puts the rule and the cleanup in your plan for review instead (marked *held*). If
+publishing fails, the message stays in `+Sluice` and is tried again on the next sweep.
+
+Run it as a service on the machine that holds your synced mail:
+
+```sh
+make install-service   # installs sluice and a systemd user unit, then starts `sluice sweep -watch`
+make service-logs      # follow what it's doing (each sweep logs a `timing:` line)
+sluice sweep           # or process the folder once by hand (`:sweep` in the TUI)
+```
+
+The service creates `+Sluice` locally if it's missing, and mbsync creates it on the server
+(`Create Both`). `sluice doctor` shows whether all of this is set up, under **sweep**.
+
 ## Requirements
 
 Run **`sluice doctor`** to check all of this on your machine. It tells you what's missing and how to fix
@@ -66,11 +93,13 @@ and matches your local copy. It runs your password command, so it may prompt.
   - `Expunge Both` (or `Far`), so originals are removed from the server instead of left marked deleted
 - Your sync run through `flock` on the lock file (e.g. `flock $XDG_RUNTIME_DIR/mbsync.lock mbsync …`).
 - A trash folder that already exists in the maildir (`Deleted Messages` by default).
-- A server with **ManageSieve** support, and [`sieve-connect`](https://github.com/philpennock/sieve-connect)
-  installed.
-- Two commands that print your mail username and password (for example, reading them from a password
-  manager). The defaults are `mail-user` and `mail-pass`. The password is passed to `sieve-connect`
-  over a pipe, never on disk or on the command line.
+- A server with **ManageSieve** support (port 4190, STARTTLS). sluice talks to it directly; no extra
+  tools needed.
+- Your mail login and a command that prints your password (for example, reading it from a password
+  manager; the default is `mail-pass`). Set `user` to your login (the built-in default is the
+  author's); if you set it to `""`, sluice runs `user_cmd` (default `mail-user`) every time instead,
+  which can mean waiting on a password-manager prompt.
+  The password stays in memory only for the one server session and is never written anywhere.
 - Optional, but recommended: the mail folder and `~/.local/share` on the same **btrfs** filesystem,
   so sandbox copies are near-free. On other filesystems the sandbox is a full copy.
 
@@ -120,13 +149,14 @@ Example: `domain:beehiiv.com older:1y unread`.
 
 **Commands** (`:` then tab to complete): `:apply [sandbox|real]`, `:group list|domain|sender`,
 `:sort score|90d|total|unread`, `:filter TEXT`, `:hide`/`:nohide`, `:search QUERY`, `:w PATH`,
-`:discard`, `:undo`, `:redo`, `:rescan`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
+`:discard`, `:undo`, `:redo`, `:rescan`, `:sweep`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
 
 ## Command line
 
 ```
 sluice [-config PATH] [-plan PATH] [-sandbox | -reset-sandbox] [-scan | -apply [-yes]]
 sluice doctor [-online] [-config PATH]
+sluice sweep [-watch] [-sandbox] [-plan PATH] [-config PATH]
 sluice version
 ```
 
@@ -140,6 +170,7 @@ sluice version
 | `-plan PATH` | use a different plan file |
 | `-config PATH` | use a different config file |
 | `doctor` | check the requirements; exits 1 if anything fails. `-online` also checks the Sieve server |
+| `sweep` | process the training folder once; exits 0 (done), 3 (mail was moved) or 1 (error). `-watch` keeps running as a service |
 | `version` (or `-version`) | print the version, commit, branch and build time |
 
 ## Configuration
@@ -156,10 +187,15 @@ lock_file         = "$XDG_RUNTIME_DIR/mbsync.lock"              # the same lock 
 sieve_file        = "~/.config/sieve/kolab.sieve"
 sieve_server      = "imap.kolabnow.com"
 sieve_script      = "kolab"
-sieve_connect     = "sieve-connect"
-user_cmd          = ["mail-user"]
+sieve_port        = 4190
+user              = "james@fryman.io"                           # your login (skips user_cmd); set "" to use user_cmd
+user_cmd          = ["mail-user"]                               # only used when user is empty
 pass_cmd          = ["mail-pass"]
 sandbox_dir       = "~/.local/share/sluice/sandbox"             # must end in /sandbox
+training_folder   = "+Sluice"                                   # drop-to-block folder
+sent_folders      = ["Sent Messages", "Sent Items"]             # people you've written to are never auto-blocked
+sweep_interval    = "5m"                                        # how often the service rechecks, besides reacting to new mail
+post_sweep_cmd    = ["mail-sync"]                               # sync right after a sweep moves mail ([] = wait for the timer)
 ```
 
 Files sluice keeps:
@@ -170,6 +206,7 @@ Files sluice keeps:
 | `~/.local/state/sluice/plan.json` | the current plan (real and sandbox modes share it) |
 | `~/.local/state/sluice/applied/` | copies of plans that have been applied to real |
 | `~/.local/state/sluice/journal.jsonl` | log of trash moves, used by undo |
+| `~/.local/state/sluice/sweep.jsonl` | what each sweep did with each dropped message |
 | `~/.local/share/sluice/sandbox/` | the sandbox (safe to delete) |
 
 ## What sluice writes to your Sieve script

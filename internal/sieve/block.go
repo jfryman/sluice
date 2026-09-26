@@ -1,5 +1,5 @@
 // Package sieve edits the sluice-managed block of a Sieve script and
-// publishes it via sieve-connect. See lode/sieve/managed-block.md.
+// publishes it over ManageSieve. See lode/sieve/managed-block.md.
 package sieve
 
 import (
@@ -38,6 +38,7 @@ type Rule struct {
 	Action Action `json:"action"`
 	Folder string `json:"folder,omitempty"`
 	Added  string `json:"added,omitempty"`
+	Source string `json:"source,omitempty"` // "sweep" when added by the training folder
 }
 
 // Same reports whether r and o match the same mail.

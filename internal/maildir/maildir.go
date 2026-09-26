@@ -110,6 +110,7 @@ type Headers struct {
 	Subject   string
 	Unsub     bool
 	MessageID string
+	Rcpts     []string // lower-cased To/Cc/Bcc addresses
 }
 
 const maxHeaderBytes = 64 << 10
@@ -150,6 +151,9 @@ func ReadHeaders(path string) (Headers, error) {
 	h.Subject = decode(hd.Get("Subject"))
 	h.Unsub = hd.Get("List-Unsubscribe") != ""
 	h.MessageID = strings.Trim(hd.Get("Message-Id"), "<> ")
+	for _, k := range []string{"To", "Cc", "Bcc"} {
+		h.Rcpts = append(h.Rcpts, addrList(hd.Get(k))...)
+	}
 	return h, nil
 }
 
@@ -177,6 +181,26 @@ func decode(s string) string {
 		s = d
 	}
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// addrList parses an address-list header leniently.
+func addrList(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	var out []string
+	if as, err := mail.ParseAddressList(v); err == nil {
+		for _, a := range as {
+			out = append(out, strings.ToLower(a.Address))
+		}
+		return out
+	}
+	for _, part := range strings.Split(v, ",") {
+		if a := extractAddr(part); a != "" {
+			out = append(out, strings.ToLower(a))
+		}
+	}
+	return out
 }
 
 func extractAddr(s string) string {

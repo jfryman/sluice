@@ -8,7 +8,7 @@ existing archives is **secondary and mostly one-time**. It indexes maildir heade
 ranks groups by volume, unread share and where SaneBox already files them. It is **plan-first**:
 every action goes into a persisted plan, and nothing touches mail or the server until the plan is
 applied — first to a full reflink sandbox clone to validate, then to real. Real applies publish via
-`sieve-connect` (credentials from the `mail-user` / `mail-pass` 1Password helpers) and move messages
+a built-in ManageSieve client (credentials: `user` + `mail-pass` from 1Password) and move messages
 into `Deleted Messages` (never deletes) under the mbsync lock, journaled for undo.
 
 Name: a sluice is a gate that controls flow — the rules are the gate; cleanup is the one-off flush.
@@ -19,7 +19,7 @@ flowchart LR
   IDX --> TUI[TUI: Candidates / Rules / Search / Plan]
   TUI -->|every action| PL[(plan.json)]
   PL -->|A → s: re-clone + apply| SB[sandbox: reflink Mail + file-based server]
-  PL -->|A → r| RL[real: sieve-connect publish + trash moves]
+  PL -->|A → r| RL[real: ManageSieve publish + trash moves]
   RL -->|next mail-sync| KI[KolabNow]
 ```
 

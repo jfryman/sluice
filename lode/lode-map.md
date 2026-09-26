@@ -4,6 +4,7 @@
 - [terminology.md](terminology.md) — domain terms
 - [practices.md](practices.md) — safety, secrets, Go style
 - [architecture.md](architecture.md) — packages, dependency graph, config keys, CLI
+- [sweep.md](sweep.md) — `+Sluice` training folder, `sluice sweep [-watch]` service, outcomes, guards
 - [doctor.md](doctor.md) — `sluice doctor`: formal requirements, checks, capabilities, fixes
 - [development.md](development.md) — make targets, watch loop, testing without touching real data
 - apply/
@@ -14,12 +15,12 @@
   - [index.md](mail/index.md) — SQLite schema, incremental scan, groups, score
 - sieve/
   - [managed-block.md](sieve/managed-block.md) — markers, rule metadata, match kinds, actions
-  - [remote.md](sieve/remote.md) — sieve-connect, credential pattern, publish flow
+  - [remote.md](sieve/remote.md) — native ManageSieve client, credentials, timing, server model, publish flow
 - cleanup/
   - [search-and-trash.md](cleanup/search-and-trash.md) — query language, trash batches, journal, undo
 - tui/
   - [summary.md](tui/summary.md) — screens, layout, apply dialogs, model shape
   - [keys.md](tui/keys.md) — vim keymap, dispatcher (counts/prefixes/scopes), viewport, plan undo, `:` commands
 - plans/
-  - [roadmap.md](plans/roadmap.md) — v1 checklist, later ideas, open issues
+  - [roadmap.md](plans/roadmap.md) — built status, first-apply checklist, later ideas, open issues
 - tmp/ — git-ignored session scraps

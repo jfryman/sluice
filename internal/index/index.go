@@ -36,6 +36,14 @@ CREATE INDEX IF NOT EXISTS messages_list   ON messages(list_id);
 CREATE INDEX IF NOT EXISTS messages_domain ON messages(from_domain);
 CREATE INDEX IF NOT EXISTS messages_addr   ON messages(from_addr);
 CREATE INDEX IF NOT EXISTS messages_folder ON messages(folder);
+-- Mail James sent: who he writes to (never auto-blocked) and his own addresses.
+CREATE TABLE IF NOT EXISTS sent (
+  key       TEXT PRIMARY KEY,
+  from_addr TEXT,
+  rcpts     TEXT              -- comma-separated, lower-cased
+);
+CREATE TABLE IF NOT EXISTS correspondents (addr TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS identities (addr TEXT PRIMARY KEY);
 `
 
 // Folders tells the index which folders carry which meaning.
@@ -44,6 +52,7 @@ type Folders struct {
 	BlackHole []string // SaneBox "never want to see"
 	News      []string // SaneBox bulk / newsletters
 	Exclude   []string // never indexed (own mail)
+	Sent      []string // scanned only for recipients / own addresses
 }
 
 type Index struct {
@@ -193,8 +202,131 @@ func (ix *Index) Scan(progress func(done, total int)) (ScanStats, error) {
 	if err := tx.Commit(); err != nil {
 		return st, err
 	}
+	if err := ix.scanSent(folders); err != nil {
+		return st, fmt.Errorf("scan sent folders: %w", err)
+	}
 	st.Took = time.Since(start)
 	return st, nil
+}
+
+// scanSent keeps the sent table in line with the sent folders and rebuilds
+// correspondents/identities when anything changed.
+func (ix *Index) scanSent(all []string) error {
+	have := map[string]bool{}
+	rows, err := ix.db.Query(`SELECT key FROM sent`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var k string
+		rows.Scan(&k)
+		have[k] = true
+	}
+	rows.Close()
+
+	exists := map[string]bool{}
+	for _, f := range all {
+		exists[f] = true
+	}
+	var fresh []maildir.File
+	seen := map[string]bool{}
+	for _, folder := range ix.f.Sent {
+		if !exists[folder] {
+			continue
+		}
+		files, err := maildir.Files(ix.root, folder)
+		if err != nil {
+			return err
+		}
+		for _, f := range files {
+			seen[f.Name.Key] = true
+			if !have[f.Name.Key] {
+				fresh = append(fresh, f)
+			}
+		}
+	}
+	var gone []string
+	for k := range have {
+		if !seen[k] {
+			gone = append(gone, k)
+		}
+	}
+	if len(fresh) == 0 && len(gone) == 0 {
+		return nil
+	}
+	parsed := parseAll(fresh, nil)
+	tx, err := ix.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i, f := range fresh {
+		h := parsed[i]
+		if _, err := tx.Exec(`INSERT OR REPLACE INTO sent (key, from_addr, rcpts) VALUES (?,?,?)`,
+			f.Name.Key, h.FromAddr, strings.Join(h.Rcpts, ",")); err != nil {
+			return err
+		}
+	}
+	for _, k := range gone {
+		if _, err := tx.Exec(`DELETE FROM sent WHERE key=?`, k); err != nil {
+			return err
+		}
+	}
+	for _, q := range []string{`DELETE FROM correspondents`, `DELETE FROM identities`,
+		`INSERT OR IGNORE INTO identities (addr) SELECT DISTINCT from_addr FROM sent WHERE from_addr != ''`} {
+		if _, err := tx.Exec(q); err != nil {
+			return err
+		}
+	}
+	rs, err := tx.Query(`SELECT rcpts FROM sent WHERE rcpts != ''`)
+	if err != nil {
+		return err
+	}
+	var addrs []string
+	for rs.Next() {
+		var r string
+		rs.Scan(&r)
+		addrs = append(addrs, strings.Split(r, ",")...)
+	}
+	rs.Close()
+	ins, err := tx.Prepare(`INSERT OR IGNORE INTO correspondents (addr) VALUES (?)`)
+	if err != nil {
+		return err
+	}
+	for _, a := range addrs {
+		if a != "" {
+			if _, err := ins.Exec(a); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+// Known reports whether addr is one of James's own addresses or someone he
+// has sent mail to, with a human-readable reason.
+func (ix *Index) Known(addr string) (bool, string, error) {
+	addr = strings.ToLower(strings.TrimSpace(addr))
+	if addr == "" {
+		return false, "", nil
+	}
+	for _, t := range []struct{ table, why string }{{"identities", "one of your own addresses"}, {"correspondents", "someone you've sent mail to"}} {
+		var n int
+		if err := ix.db.QueryRow(`SELECT count(*) FROM `+t.table+` WHERE addr = ?`, addr).Scan(&n); err != nil {
+			return false, "", err
+		}
+		if n > 0 {
+			return true, addr + " is " + t.why, nil
+		}
+	}
+	return false, "", nil
+}
+
+// Correspondents returns how many distinct recipients are known.
+func (ix *Index) Correspondents() (int, error) {
+	var n int
+	err := ix.db.QueryRow(`SELECT count(*) FROM correspondents`).Scan(&n)
+	return n, err
 }
 
 func parseAll(files []maildir.File, progress func(done, total int)) []maildir.Headers {

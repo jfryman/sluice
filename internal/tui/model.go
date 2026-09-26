@@ -24,6 +24,7 @@ import (
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/query"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/sweep"
 )
 
 // SandboxTarget lets real mode validate a plan: Refresh re-clones, then the
@@ -912,6 +913,20 @@ func (m *Model) confirmReal(st *sieve.ServerStatus) {
 	m.openDialog("Apply plan to REAL mail and server?", lines, action{"y", "apply to real", func() tea.Cmd {
 		return tea.Batch(m.startBusy("applying plan to real"), m.applyTo(target, nil))
 	}})
+}
+
+type sweepMsg struct {
+	rep sweep.Report
+	err error
+}
+
+// runSweep processes the training folder once for this environment.
+func (m *Model) runSweep() tea.Cmd {
+	d := sweep.Deps{Cfg: m.d.Config, Index: m.d.Index, Publisher: m.d.Target.Publisher}
+	return tea.Batch(m.startBusy("sweeping "+m.d.Config.TrainingFolder), func() tea.Msg {
+		rep, err := sweep.Run(d)
+		return sweepMsg{rep, err}
+	})
 }
 
 type doctorMsg struct{ lines []string }

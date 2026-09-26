@@ -1,0 +1,18 @@
+# sluice sweep service: turns messages dropped into the training folder
+# (default +Sluice) into Sieve rules, and queues cleanup of existing mail
+# into the plan. Install with `make install-service`.
+[Unit]
+Description=sluice sweep (training folder → Sieve rules)
+Documentation=https://github.com/jfryman/sluice
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/sluice sweep -watch
+Restart=on-failure
+RestartSec=30
+# pass_cmd (mail-pass) needs op/keyctl on PATH.
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target

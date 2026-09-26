@@ -105,6 +105,7 @@ func init() {
 			m.setStatus("%s", strings.ReplaceAll(version.Long(), "\n", " ·"))
 			return nil
 		}},
+		{"sweep", nil, "process the training folder once", func(m *Model, a string) tea.Cmd { return m.runSweep() }},
 		{"doctor", nil, "check requirements (offline)", func(m *Model, a string) tea.Cmd { return m.runDoctor() }},
 		{"help", nil, "key + command help", func(m *Model, a string) tea.Cmd { m.openHelp(); return nil }},
 	}

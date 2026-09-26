@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/jfryman/sluice/internal/config"
 	"github.com/jfryman/sluice/internal/index"
@@ -20,6 +21,8 @@ import (
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sandbox"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/sweep"
+	"github.com/jfryman/sluice/internal/timing"
 )
 
 type Status int
@@ -38,9 +41,10 @@ const (
 	CapBrowse  Capability = "browse & plan"
 	CapSandbox Capability = "apply to sandbox"
 	CapReal    Capability = "apply to real"
+	CapSweep   Capability = "sweep"
 )
 
-var Capabilities = []Capability{CapBrowse, CapSandbox, CapReal}
+var Capabilities = []Capability{CapBrowse, CapSandbox, CapReal, CapSweep}
 
 type Check struct {
 	Name   string
@@ -68,6 +72,21 @@ func (r Report) Available(c Capability) bool {
 	return true
 }
 
+// Degraded reports whether a warning gates c directly (usable, but check it).
+func (r Report) Degraded(c Capability) bool {
+	for _, ch := range r.Checks {
+		if ch.Status != Warn {
+			continue
+		}
+		for _, g := range ch.Gates {
+			if g == c {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (r Report) Failed() bool {
 	for _, c := range r.Checks {
 		if c.Status == Fail {
@@ -85,12 +104,16 @@ type Options struct {
 	LookPath   func(string) (string, error)
 	MbsyncRC   string // path override for the mbsync config
 	RemoteStat func() (sieve.ServerStatus, error)
+	// ServiceState returns the sweep unit's ActiveState ("active", "failed",
+	// …) or "not-found" when it isn't installed.
+	ServiceState func() (string, error)
 }
 
 var (
 	all      = []Capability{CapBrowse}
 	realOnly = []Capability{CapReal}
 	sandbx   = []Capability{CapSandbox}
+	sweepCap = []Capability{CapSweep}
 	applies  = []Capability{CapSandbox, CapReal}
 )
 
@@ -105,13 +128,16 @@ func Run(cfg config.Config, o Options) Report {
 	folders := d.mailRoot()
 	d.folders(folders)
 	d.trash(folders)
+	d.training(folders)
 	d.index()
 	d.state()
 	d.sieveFile()
-	d.binary("sieve-connect", cfg.SieveConnect, "sieve_connect",
-		"install sieve-connect (e.g. `pacman -S sieve-connect`, or from github.com/philpennock/sieve-connect)")
 	d.credentials()
 	d.mbsync()
+	d.sluiceOnPath()
+	d.postSweep()
+	d.sweepService()
+	d.lastSweep()
 	d.lock()
 	if d.sandbox() {
 		d.reflink() // only probe a valid sandbox location: never write near mail_root
@@ -214,6 +240,101 @@ func (d *run) trash(have []string) {
 		"set trash_folder to your server's trash folder name (it must already exist; Sieve can't create it)")
 }
 
+// training checks the drop-to-block folder `sluice sweep` watches.
+func (d *run) training(have []string) {
+	if have == nil {
+		return
+	}
+	name := d.cfg.TrainingFolder
+	if name == "" {
+		d.add("training folder", Warn, sweepCap, "training_folder is empty",
+			"set training_folder in "+d.o.ConfigPath+" (default \"+Sluice\")")
+		return
+	}
+	for _, f := range have {
+		if f == name {
+			d.add("training folder", OK, sweepCap, name, "")
+			return
+		}
+	}
+	dir := filepath.Join(d.cfg.MailRoot, name)
+	d.add("training folder", Warn, sweepCap, fmt.Sprintf("%q is not a folder under %s", name, d.cfg.MailRoot),
+		fmt.Sprintf("mkdir -p '%s'/{cur,new,tmp}  (the next mail-sync creates it on the server), or set training_folder", dir))
+}
+
+func (d *run) postSweep() {
+	if len(d.cfg.PostSweepCmd) == 0 {
+		return
+	}
+	if p, err := d.o.LookPath(d.cfg.PostSweepCmd[0]); err == nil {
+		d.add("post-sweep cmd", OK, sweepCap, p, "")
+		return
+	}
+	d.add("post-sweep cmd", Warn, sweepCap, d.cfg.PostSweepCmd[0]+" not found",
+		"set post_sweep_cmd to your sync command (e.g. [\"mbsync\", \"-a\"]) or [] to wait for the sync timer")
+}
+
+func (d *run) sluiceOnPath() {
+	p, err := d.o.LookPath("sluice")
+	if err != nil {
+		d.add("sluice on PATH", Warn, sweepCap, "sluice not found on PATH",
+			"run `make install` (installs ~/.local/bin/sluice) so mail-sync can call `sluice sweep`")
+		return
+	}
+	d.add("sluice on PATH", OK, sweepCap, p, "")
+}
+
+const sweepUnit = "sluice-sweep.service"
+
+func (d *run) sweepService() {
+	state := d.o.ServiceState
+	if state == nil {
+		if _, err := d.o.LookPath("systemctl"); err != nil {
+			d.add("sweep service", Warn, sweepCap, "systemctl not found",
+				"run `sluice sweep -watch` under your own supervisor")
+			return
+		}
+		state = func() (string, error) {
+			// LoadState tells "not installed" apart from "installed but stopped".
+			out, err := exec.Command("systemctl", "--user", "show", "-p", "LoadState", "-p", "ActiveState", "--value", sweepUnit).Output()
+			f := strings.Fields(string(out))
+			if len(f) == 2 && f[0] == "not-found" {
+				return "not-found", err
+			}
+			if len(f) == 2 {
+				return f[1], err
+			}
+			return "", err
+		}
+	}
+	s, _ := state() // is-active exits non-zero when not active; the text says why
+	switch s {
+	case "active":
+		d.add("sweep service", OK, sweepCap, sweepUnit+" active", "")
+	case "", "unknown", "not-found":
+		d.add("sweep service", Warn, sweepCap, sweepUnit+" not installed",
+			"`make install-service` on the machine that should run it (installs and starts the user unit)")
+	default:
+		d.add("sweep service", Warn, sweepCap, sweepUnit+" is "+s,
+			"`systemctl --user restart "+sweepUnit+"`; see `make service-logs`")
+	}
+}
+
+// lastSweep reports the most recent sweep outcome if it was an error.
+func (d *run) lastSweep() {
+	outs, err := sweep.ReadLog(d.cfg.SweepLog)
+	if err != nil || len(outs) == 0 {
+		return
+	}
+	last := outs[len(outs)-1]
+	if last.Result == sweep.Failed {
+		d.add("last sweep", Warn, sweepCap, fmt.Sprintf("%s: %s %s — %s", last.Time, last.Kind, last.Value, last.Reason),
+			"fix the cause; the message stays in "+d.cfg.TrainingFolder+" and is retried on the next sweep")
+		return
+	}
+	d.add("last sweep", OK, sweepCap, fmt.Sprintf("%s: %s %s %s", last.Time, last.Result, last.Kind, last.Value), "")
+}
+
 func (d *run) index() {
 	ix, err := index.Open(d.cfg.IndexPath, d.cfg.MailRoot, index.Folders{Trash: d.cfg.TrashFolder})
 	if err != nil {
@@ -262,38 +383,36 @@ func (d *run) sieveFile() {
 	d.add("sieve file", OK, realOnly, fmt.Sprintf("%s (%d managed rules)", d.cfg.SieveFile, len(s.Rules)), "")
 }
 
-func (d *run) binary(name, bin, key, fix string) {
-	if p, err := d.o.LookPath(bin); err == nil {
-		d.add(name, OK, realOnly, p, "")
-		return
-	}
-	d.add(name, Fail, realOnly, bin+" not found", fix+"; or set "+key+" in "+d.o.ConfigPath)
-}
-
 func (d *run) credentials() {
 	var bad []string
-	for _, c := range []struct {
-		key  string
-		argv []string
-	}{{"user_cmd", d.cfg.UserCmd}, {"pass_cmd", d.cfg.PassCmd}} {
-		if len(c.argv) == 0 {
-			bad = append(bad, c.key+" is empty")
-			continue
+	if d.cfg.User == "" {
+		if len(d.cfg.UserCmd) == 0 {
+			bad = append(bad, "neither user nor user_cmd is set")
+		} else if _, err := d.o.LookPath(d.cfg.UserCmd[0]); err != nil {
+			bad = append(bad, "user_cmd: "+d.cfg.UserCmd[0]+" not found")
 		}
-		if _, err := d.o.LookPath(c.argv[0]); err != nil {
-			bad = append(bad, c.key+": "+c.argv[0]+" not found")
-		}
+	}
+	if len(d.cfg.PassCmd) == 0 {
+		bad = append(bad, "pass_cmd is empty")
+	} else if _, err := d.o.LookPath(d.cfg.PassCmd[0]); err != nil {
+		bad = append(bad, "pass_cmd: "+d.cfg.PassCmd[0]+" not found")
 	}
 	if len(bad) > 0 {
 		d.add("credentials", Fail, realOnly, strings.Join(bad, "; "),
-			"set user_cmd / pass_cmd to commands that print your mail username / password (run `sluice doctor -online` to test them)")
+			"set user (or user_cmd) and pass_cmd to print your mail username / password (run `sluice doctor -online` to test them)")
 		return
 	}
 	how := " (not run; use -online)"
 	if d.o.Online {
 		how = " (used by the server check below)"
 	}
-	d.add("credentials", OK, realOnly, strings.Join(d.cfg.UserCmd, " ")+" / "+strings.Join(d.cfg.PassCmd, " ")+how, "")
+	pass := strings.Join(d.cfg.PassCmd, " ")
+	if d.cfg.User != "" {
+		d.add("credentials", OK, realOnly, "user "+d.cfg.User+" / "+pass+how, "")
+		return
+	}
+	d.add("credentials", Warn, realOnly, strings.Join(d.cfg.UserCmd, " ")+" / "+pass+how+"; user_cmd runs on every publish",
+		"set `user = \"<your login>\"` in "+d.o.ConfigPath+" so publishes don't wait on user_cmd (e.g. a 1Password authorisation)")
 }
 
 func (d *run) mbsync() {
@@ -341,9 +460,15 @@ func (d *run) mbsync() {
 	}
 	if len(problems) > 0 {
 		d.add("mbsync config", Warn, realOnly, rc+": "+strings.Join(problems, "; "), strings.Join(fixes, "; "))
-		return
+	} else {
+		d.add("mbsync config", OK, realOnly, rc+": store path matches, pushes changes, expunges far side", "")
 	}
-	d.add("mbsync config", OK, realOnly, rc+": store path matches, pushes changes, expunges far side", "")
+	if mc.createsFar() {
+		d.add("mbsync create", OK, sweepCap, rc+": Create "+strings.Join(mc.create, ", "), "")
+	} else {
+		d.add("mbsync create", Warn, sweepCap, rc+": Create ("+orNone(mc.create)+") won't create new folders on the server",
+			"use `Create Both` (or Far) so a locally created "+d.cfg.TrainingFolder+" folder reaches the server")
+	}
 }
 
 func (d *run) lock() {
@@ -412,18 +537,24 @@ func (d *run) reflink() {
 }
 
 func (d *run) server() {
+	rec := &timing.Recorder{}
 	stat := d.o.RemoteStat
 	if stat == nil {
-		r := sieve.Remote{Bin: d.cfg.SieveConnect, Server: d.cfg.SieveServer, Script: d.cfg.SieveScript,
-			UserCmd: d.cfg.UserCmd, PassCmd: d.cfg.PassCmd}
+		r := sieve.Remote{Server: d.cfg.SieveServer, Port: d.cfg.SievePort, Script: d.cfg.SieveScript,
+			User: d.cfg.User, UserCmd: d.cfg.UserCmd, PassCmd: d.cfg.PassCmd, Trace: rec}
 		stat = func() (sieve.ServerStatus, error) { return r.Status(d.cfg.SieveFile) }
 	}
+	t0 := time.Now()
 	st, err := stat()
+	took := fmt.Sprintf(" [%.1fs]", time.Since(t0).Seconds())
+	if t := rec.String(); t != "" {
+		took = " [" + t + "]"
+	}
 	ours, srv := d.cfg.SieveScript, d.cfg.SieveServer
 	other := st.OtherActive(ours)
 	switch {
 	case err != nil:
-		d.add("server", Fail, realOnly, err.Error(),
+		d.add("server", Fail, realOnly, err.Error()+took,
 			"check sieve_server, and that user_cmd/pass_cmd print valid credentials")
 	case !st.Exists && other != "":
 		d.add("server", Fail, realOnly, fmt.Sprintf("%q not on %s, and %q is the active script", ours, srv, other),
@@ -441,14 +572,14 @@ func (d *run) server() {
 		d.add("server", Warn, realOnly, fmt.Sprintf("%q exists but no script is active", ours),
 			"nothing to fix: the next apply activates it")
 	default:
-		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active, matches local", srv, ours), "")
+		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active, matches local%s", srv, ours, took), "")
 	}
 }
 
 // ---- helpers ----
 
 type mbsyncConf struct {
-	paths, sync, expunge []string
+	paths, sync, expunge, create []string
 }
 
 func parseMbsyncRC(path string) (mbsyncConf, error) {
@@ -473,6 +604,8 @@ func parseMbsyncRC(path string) (mbsyncConf, error) {
 			c.sync = append(c.sync, val)
 		case "expunge":
 			c.expunge = append(c.expunge, val)
+		case "create":
+			c.create = append(c.create, val)
 		}
 	}
 	return c, sc.Err()
@@ -487,6 +620,17 @@ func (c mbsyncConf) pushes() bool {
 		}
 	}
 	return true
+}
+
+// createsFar: mbsync's default Create is None.
+func (c mbsyncConf) createsFar() bool {
+	for _, e := range c.create {
+		v := strings.ToLower(e)
+		if strings.Contains(v, "both") || strings.Contains(v, "far") || strings.Contains(v, "master") {
+			return true
+		}
+	}
+	return false
 }
 
 // expungesFar: mbsync's default Expunge is None.
@@ -593,8 +737,11 @@ func (r Report) Lines() []string {
 	var caps []string
 	for _, c := range Capabilities {
 		sym := "✓"
-		if !r.Available(c) {
+		switch {
+		case !r.Available(c):
 			sym = "✗"
+		case r.Degraded(c):
+			sym = "!"
 		}
 		caps = append(caps, sym+" "+string(c))
 	}

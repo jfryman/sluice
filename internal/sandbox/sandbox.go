@@ -49,6 +49,7 @@ func (s Sandbox) Config(real config.Config) config.Config {
 	c.SieveFile = s.SieveFile()
 	c.IndexPath = filepath.Join(s.Dir, "cache", "index.db")
 	c.JournalPath = filepath.Join(s.Dir, "state", "journal.jsonl")
+	c.SweepLog = filepath.Join(s.Dir, "state", "sweep.jsonl")
 	return c
 }
 

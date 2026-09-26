@@ -36,6 +36,11 @@ func (f FilePublisher) Status(localPath string) (ServerStatus, error) {
 }
 
 func (f FilePublisher) Publish(localPath, newText string, _ PublishOptions) ([]string, error) {
+	unlock, err := lockLocal(localPath)
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
 	st, err := f.Status(localPath)
 	if err != nil {
 		return nil, err

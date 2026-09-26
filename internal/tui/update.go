@@ -94,6 +94,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmReal(&msg.st)
 		return m, nil
 
+	case sweepMsg:
+		m.busy = ""
+		m.loadScript()
+		m.reloadPlan()
+		m.applyFilter()
+		lines := msg.rep.Summary()
+		if len(lines) == 0 {
+			lines = []string{"nothing in " + m.d.Config.TrainingFolder}
+		}
+		if msg.err != nil {
+			lines = append(lines, "", "error: "+msg.err.Error())
+		}
+		m.openDialog("Sweep "+m.d.Config.TrainingFolder, lines)
+		return m, m.loadGroups()
+
 	case doctorMsg:
 		m.busy = ""
 		m.openDialog("Doctor ("+m.d.Env+") — "+version.Short(), msg.lines)

@@ -22,6 +22,8 @@ published. Credentials are never involved (see Secrets), but mailbox-derived dat
   observations go in `lode/tmp/` (git-ignored) or get paraphrased ("a newsletter platform sending
   ~1.2k msgs / 90d").
 - Before committing, scan the diff for real-mail specifics.
+- James's own login (`james@fryman.io`) is the accepted default for `user` (it's already public in
+  commit metadata); that's the one intentional exception.
 - Existing examples already pushed (README screenshot, a few lode lessons) were accepted by James
   on 2026-09-24; don't add more, and prefer sanitized versions whenever those sections are edited.
 
@@ -32,23 +34,23 @@ git diff --cached | grep -nE '^\+' | grep -viE 'example\.(com|org)|\.example\b|g
 ```
 
 ## Secrets
-- **Never run `sieve-connect --debug`** (or any protocol trace) where output is captured: the
-  AUTHENTICATE line is `base64(user\0user\0password)` — a plaintext credential. This leaked the
-  KolabNow password into a session transcript on 2026-09-24 (filtering the output did not catch it).
-  To see what the server has, use `sluice doctor -online` or plain `--list`, which never echo auth.
+- **Never capture a ManageSieve/IMAP protocol trace** (`sieve-connect --debug`, packet dumps, logging
+  in `managesieve.go`): the AUTHENTICATE line is `base64("\0"+user+"\0"+password)` — a plaintext
+  credential. This leaked the KolabNow password into a session transcript on 2026-09-24. sluice's
+  client logs stage names and durations only; use `sluice doctor -online` to see server state.
 - Never read, store or log credentials. Shell out to configurable commands (`mail-user`, `mail-pass`)
-  and hand the password to `sieve-connect` on fd 3 via a pipe (`--passwordfd 3`), newline-terminated.
+  and keep the password as `[]byte` only for the session (wiped after); it never touches disk or argv.
 
 ```go
-r, w, _ := os.Pipe()
-cmd.ExtraFiles = []*os.File{r} // becomes fd 3 in the child
-go func() { w.Write(append(pass, '\n')); w.Close() }()
+pass, _ := output(r.PassCmd)           // e.g. mail-pass → 1Password, keyring-cached
+defer func() { for i := range pass { pass[i] = 0 } }()
+c.AuthPlain(user, pass)                 // SASL PLAIN over STARTTLS; never logged
 ```
 
 ## Go style
 - Packages under `internal/`, one responsibility each; TUI depends on everything, nothing depends on TUI.
 - Pure logic (query parsing, sieve render/parse, filename munging, scoring) is unit-tested with table tests.
-- Long work (index scan, sieve-connect, moves) runs as `tea.Cmd` returning a typed msg; never block `Update`.
+- Long work (index scan, ManageSieve sessions, moves) runs as `tea.Cmd` returning a typed msg; never block `Update`.
 - Pure-Go SQLite (`modernc.org/sqlite`) — no cgo.
 
 ## Requirements live in doctor
@@ -67,6 +69,10 @@ go func() { w.Write(append(pass, '\n')); w.Close() }()
 - Vim user: new TUI interactions should follow vim conventions (see [tui/keys.md](tui/keys.md)).
 - Values safety (plan-first, sandbox, doctor) but not ceremony: keep confirmations to real applies.
 - Commits: branch off `main` for work, fast-forward merge when he asks.
+- **The Claude session runs on a dev machine** that mirrors his desktop (same mbsync, maildir,
+  `mail-sync`, 1Password), but the desktop is where sluice lives long-term. Never couple features to
+  this machine or edit his dotfiles/scripts (`~/.local/bin/*`, systemd units) to integrate: ship the
+  integration in the repo (config keys, `contrib/`, make targets) so it installs on any machine.
 
 ## Lode
 - Lode describes current state; changelog-ish notes go to `lode/tmp/`.

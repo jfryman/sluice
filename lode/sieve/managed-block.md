@@ -32,6 +32,9 @@ if address :domain :is "from" "promo.shop.com" {
 # <<< sluice managed block <<<
 ```
 
+Rule metadata fields: `kind`, `value`, `action`, `folder` (file only), `added`, `source` (`"sweep"`
+for rules the training folder published; the TUI can tell them apart).
+
 ## Match kinds → tests
 | kind   | Sieve test                                   |
 |--------|----------------------------------------------|

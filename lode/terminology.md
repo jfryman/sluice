@@ -26,7 +26,11 @@
 - Target - an environment a plan can be applied to: `sandbox` or `real`.
 - Sandbox - `$XDG_DATA_HOME/sluice/sandbox`: reflink clone of the mailbox + sieve script with a file-based stand-in server.
 - Validated - plan stamp set when the exact plan content applied cleanly to a freshly cloned sandbox; any edit clears it.
-- Publisher - interface for making a script active: `sieve.Remote` (sieve-connect) or `sieve.FilePublisher` (sandbox).
+- Publisher - interface for making a script active: `sieve.Remote` (native ManageSieve) or `sieve.FilePublisher` (sandbox).
 - Batch - one trash operation (one journal id).
+- Training folder - the IMAP/maildir folder (`training_folder`, default `+Sluice`) James drops unwanted mail into.
+- Sweep - processing the training folder: publish a rule per drop, queue cleanup, move drops to trash (`sluice sweep`).
+- Held - a sweep outcome when the sender is a correspondent/own address: rule + cleanup queued, nothing published.
+- Correspondent - an address James has sent mail to (from `sent_folders`); never auto-blocked.
 - Doctor - `sluice doctor`: executable requirements check; each check is ok/warn/fail with a fix.
 - Capability - what a machine can do per doctor: browse & plan, apply to sandbox, apply to real.
