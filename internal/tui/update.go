@@ -154,7 +154,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus("applied to real; plan archived")
 		default:
 			lines = append(lines, "", m.validatedLine(), "Browse the result: sluice -sandbox")
-			m.setStatus("validated in sandbox — A → r to apply to real")
+			m.setStatus("validated in sandbox — A r y applies to real")
 		}
 		m.openDialog(title, lines)
 		if msg.target == m.d.Env {

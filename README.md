@@ -31,8 +31,8 @@ flowchart LR
   M[~/Mail maildir] -->|header scan| I[(local index)]
   I --> T[TUI: find noisy senders & lists]
   T -->|every action| P[(plan)]
-  P -->|A → s| S[sandbox: full copy of your mail]
-  P -->|A → r| R[real: upload Sieve rules + trash messages]
+  P -->|A s| S[sandbox: full copy of your mail]
+  P -->|A r y| R[real: upload Sieve rules + trash messages]
   R -->|next mbsync run| K[mail server]
 ```
 

@@ -43,8 +43,8 @@ flowchart LR
   E[edit .go] --> W[make watch: fmt-check vet test build]
   W -->|green| D[make dev: TUI on sandbox]
   D --> P[(plan.json)]
-  P -->|A → s from make run| V[validated]
-  V -->|A → r| R[real]
+  P -->|A s from make run| V[validated]
+  V -->|A r y| R[real]
 ```
 
 ## Testing without touching real data

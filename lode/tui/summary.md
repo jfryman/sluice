@@ -20,7 +20,7 @@ stateDiagram-v2
   Candidates --> Dialog: enter (detail) / t / x
   Candidates --> Picker: f
   Search --> Dialog: X
-  Plan --> Dialog: A → s | r → y
+  Plan --> Dialog: A s · A r y
   Dialog --> Dialog: apply → report
 ```
 

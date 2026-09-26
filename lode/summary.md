@@ -18,8 +18,8 @@ flowchart LR
   MD[~/Mail/kolab] -->|header scan| IDX[(SQLite index)]
   IDX --> TUI[TUI: Candidates / Rules / Search / Plan]
   TUI -->|every action| PL[(plan.json)]
-  PL -->|A → s: re-clone + apply| SB[sandbox: reflink Mail + file-based server]
-  PL -->|A → r| RL[real: ManageSieve publish + trash moves]
+  PL -->|A s: re-clone + apply| SB[sandbox: reflink Mail + file-based server]
+  PL -->|A r y| RL[real: ManageSieve publish + trash moves]
   RL -->|next mail-sync| KI[KolabNow]
 ```
 

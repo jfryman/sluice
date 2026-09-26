@@ -43,6 +43,10 @@ Each list keeps its own cursor and scroll offset with `scrolloff = 2`. Moving th
 minimally; `ctrl+e`/`ctrl+y` scroll and drag the cursor; `H`/`M`/`L` are relative to the visible rows.
 
 ## Bindings
+Notation is vim's: adjacent keys are a sequence (`gg`, `dd`); chords carry a modifier (`ctrl+d`).
+Sequences that cross dialogs are space-separated in user-facing text — `A r y` (apply → real →
+confirm), `A s` (validate in sandbox) — never arrows, which read like chords.
+
 | scope | keys |
 |-------|------|
 | global | `h`/`l` or `gT`/`gt` prev/next tab (count repeats) · `{n}gt` tab n · `u` undo plan edit · `ctrl+r` redo · `U` undo applied trash batch · `A` apply · `:` command line · `?` help · `R` rescan · `q` / `ZZ` quit |

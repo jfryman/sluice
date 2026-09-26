@@ -9,8 +9,8 @@ pending **plan**; the plan is applied explicitly — to the sandbox to validate,
 ```mermaid
 flowchart LR
   UI[TUI actions t f r x X dd u] --> P[(plan.json)]
-  P -->|A → s| SB[refresh sandbox clone → apply → report]
-  P -->|A → r| RL[apply to real mail + server → archive plan]
+  P -->|A s| SB[refresh sandbox clone → apply → report]
+  P -->|A r y| RL[apply to real mail + server → archive plan]
   SB -->|plan kept, Validated set| P
 ```
 
