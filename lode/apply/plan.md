@@ -56,5 +56,10 @@ See [../sieve/remote.md](../sieve/remote.md#server-model).
    `Ref.Folder` + key are resolved against the target maildir (paths are never trusted).
 3. Report: per-rule log, per-item moved/skipped counts, first few skip reasons.
 
+Progress: `Target.Progress func(stage string)` (optional) gets `publishing rules` and, via
+`cleanup.Cleaner.Progress` (throttled to 100ms, always called at done == total),
+`moving N/M messages`. The TUI also wraps a `sieve.Remote` publisher with a `timing.Recorder` whose
+`OnStage` reports server steps (`publishing rules: auth`). See [../tui/summary.md](../tui/summary.md).
+
 Headless: `sluice -apply` (real) or `sluice -sandbox -apply` prints the summary, asks `y/N` on
 stdin (skip with `-yes`), applies, prints the report.

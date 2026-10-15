@@ -147,6 +147,7 @@ func (m *Model) dispatch(k tea.KeyMsg) tea.Cmd {
 				count := m.keys.count
 				m.keys = keyState{}
 				if b.act && m.busy != "" {
+					m.status, m.statusErr = "busy — "+strings.TrimPrefix(m.busyBadge(), m.spin.View()+" ")+" · wait for it to finish", true
 					return nil
 				}
 				return b.run(m, count)

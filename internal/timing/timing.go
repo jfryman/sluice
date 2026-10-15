@@ -16,6 +16,9 @@ type Stage struct {
 
 // Recorder is safe for concurrent use; a nil *Recorder records nothing.
 type Recorder struct {
+	// OnStage, if set, is called as each stage starts (live progress).
+	OnStage func(name string)
+
 	mu     sync.Mutex
 	start  time.Time
 	stages []Stage
@@ -47,6 +50,9 @@ func (r *Recorder) Add(name string, d time.Duration) {
 //
 //	defer rec.Time("scan")()
 func (r *Recorder) Time(name string) func() {
+	if r != nil && r.OnStage != nil {
+		r.OnStage(name)
+	}
 	t := time.Now()
 	return func() { r.Add(name, time.Since(t)) }
 }

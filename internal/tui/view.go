@@ -29,6 +29,7 @@ var (
 	sErr     = lipgloss.NewStyle().Foreground(danger)
 	sOK      = lipgloss.NewStyle().Foreground(ok)
 	sSweep   = lipgloss.NewStyle().Foreground(accent) // plan items queued by a sweep
+	sBusy    = lipgloss.NewStyle().Bold(true).Foreground(accent).Background(cursorBg)
 	sWarn    = lipgloss.NewStyle().Foreground(warn)
 	sAccent  = lipgloss.NewStyle().Foreground(accent)
 	sOverlay = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent).Padding(0, 1)
@@ -96,6 +97,9 @@ func (m *Model) viewTabs() string {
 		}
 	}
 	right := sMuted.Render(fmt.Sprintf("%d msgs indexed", m.indexCount))
+	if m.busy != "" {
+		right = sBusy.Render(" " + m.busyBadge() + " ")
+	}
 	if !m.plan.Empty() {
 		p := fmt.Sprintf("plan: %d rules · %d msgs", len(m.plan.Rules), m.plan.Messages())
 		if m.plan.Validated != nil {
@@ -120,8 +124,6 @@ func (m *Model) viewStatus() string {
 	}
 	var left string
 	switch {
-	case m.busy != "":
-		left = sAccent.Render(m.spin.View() + " " + m.busy)
 	case m.statusErr:
 		left = sErr.Render(m.status)
 	default:

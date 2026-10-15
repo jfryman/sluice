@@ -11,7 +11,8 @@ Key input outside text prompts goes through one dispatcher with vim semantics:
   right of the status line (vim's showcmd). Unknown sequences clear silently.
 - **Scopes** are searched most-specific first: overlay (dialog/picker) → tab (candidates / rules /
   search / plan) → list (any list tab) → global.
-- While an operation runs (`busy`), only non-action bindings (motions, help, tabs) work.
+- While an operation runs (`busy`), only non-action bindings (motions, help, tabs) work; an action
+  key sets the status to `busy — <label> · <step> · m:ss · wait for it to finish` (error style).
 
 ```go
 type binding struct {

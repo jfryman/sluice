@@ -56,6 +56,17 @@ outcome count tracked from startup). New outcomes reload plan + sieve + groups a
 `swept +Sluice: blocked X (N trashed) · held Y (M queued)` (`sweep.Brief`). Plan tab colors
 `sweep:` items accent and `sweep (held…)` items warn with ⚠.
 
+**Busy indicator:** while `busy` is set the tab bar's right side shows a badge
+`⠋ <label> · <step> · m:ss` (`busyBadge`; elapsed from 2s; redrawn by the spinner ticks), replacing
+"N msgs indexed". Long work runs through `runBusy(label, work(progress))`: a goroutine sends
+`progressMsg{ch, stage}` (non-blocking, buffer 16) and finally the result msg on the same channel;
+the `progressMsg` handler always re-waits on `msg.ch` but only updates `busyStage` when `ch ==
+progCh` (stale ops can't overwrite). Users: apply (sandbox / validate with "cloning sandbox (copying
+mail)" / real; server steps via `traced`), the server precheck, `U` undo (`restoring N/M`), `:cleanup`
+(`rule i/N`); the startup scan sets `busyStage` to `parsing headers N/M`. Others (`:sweep`, search,
+doctor) show label + elapsed only. Applies are not cancellable — stopping mid-move would leave the
+plan half-applied.
+
 Layout: tab bar · body · status line (message or `:`/`/` prompt on the left; `-- VISUAL LINE --` and
 pending count/prefix on the right) · one help line.
 
@@ -77,13 +88,14 @@ type Model struct {
   base *sieve.Script          // this env's sieve file on disk
   plan *plan.Plan             // reloaded from disk on tab switch / mutation
   dialog dialogState          // title, lines, actions []action{key,label,run}
-  busy string                 // non-empty = operation running; action keys ignored, motions work
+  busy string                 // non-empty = operation running; action keys refused, motions work
+  busyStage string; busyStart time.Time; progCh chan tea.Msg // see "Busy indicator"
 }
 func (m *Model) desired() []sieve.Rule // base rules + plan ops
 func (m *Model) mutate(fn func(*plan.Plan) error) error // plan.Update under lock
 ```
 Typed msgs: `scanProgressMsg`/`scanDoneMsg`, `groupsMsg`, `detailMsg`, `searchMsg`, `retroMsg`
-(→ plan-trash dialog), `itemMsg`, `undoMsg`, `applyMsg`, `sweepMsg`/`sweepLogMsg`, `cleanupMsg`. Files: `model.go` (state, commands, plan
+(→ plan-trash dialog), `itemMsg`, `undoMsg`, `applyMsg`, `progressMsg`, `sweepMsg`/`sweepLogMsg`, `cleanupMsg`. Files: `model.go` (state, commands, plan
 staging + undo, apply dialogs, `/` prompt), `update.go` (msgs, prompt routing, picker), `keys.go`
 (dispatcher, viewport, global/list bindings), `keys_bind.go` (tab/dialog bindings), `cmdline.go`
 (`:` commands), `view.go` (rendering, `?` help). Keymap tests: `keys_test.go` drives `Model.key`

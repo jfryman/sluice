@@ -27,8 +27,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
 
+	case progressMsg:
+		if msg.ch == m.progCh && m.busy != "" {
+			m.busyStage = msg.stage
+		}
+		return m, waitChan(msg.ch) // keep reading: the result comes on the same channel
+
 	case scanProgressMsg:
-		m.busy = fmt.Sprintf("indexing mail: parsing headers %d/%d", msg.done, msg.total)
+		m.busyStage = fmt.Sprintf("parsing headers %d/%d", msg.done, msg.total)
 		return m, waitChan(m.scanCh)
 
 	case scanDoneMsg:

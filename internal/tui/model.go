@@ -25,6 +25,7 @@ import (
 	"github.com/jfryman/sluice/internal/query"
 	"github.com/jfryman/sluice/internal/sieve"
 	"github.com/jfryman/sluice/internal/sweep"
+	"github.com/jfryman/sluice/internal/timing"
 )
 
 // SandboxTarget lets real mode validate a plan: Refresh re-clones, then the
@@ -146,6 +147,9 @@ type Model struct {
 	busy       string
 	spin       spinner.Model
 	scanCh     chan tea.Msg
+	progCh     chan tea.Msg // current runBusy operation's progress/result
+	busyStage  string       // current step of the busy operation, if reported
+	busyStart  time.Time
 	status     string
 	statusErr  bool
 	indexCount int
@@ -352,8 +356,54 @@ func (m *Model) setErr(err error) {
 }
 
 func (m *Model) startBusy(what string) tea.Cmd {
-	m.busy = what
+	m.busy, m.busyStage, m.busyStart = what, "", time.Now()
 	return m.spin.Tick
+}
+
+type progressMsg struct {
+	ch    chan tea.Msg
+	stage string
+}
+
+// runBusy runs work in the background as the busy operation label. work
+// reports steps through progress (shown in the header badge) and returns
+// the result message, which is delivered like any other.
+func (m *Model) runBusy(label string, work func(progress func(stage string)) tea.Msg) tea.Cmd {
+	ch := make(chan tea.Msg, 16)
+	m.progCh = ch
+	go func() {
+		res := work(func(stage string) {
+			select {
+			case ch <- progressMsg{ch, stage}:
+			default: // the next step or the result supersedes it
+			}
+		})
+		ch <- res
+		close(ch)
+	}()
+	return tea.Batch(m.startBusy(label), waitChan(ch))
+}
+
+// traced makes a ManageSieve publisher report its steps (connect, auth,
+// put, …) as "<prefix>: <step>".
+func traced(pub sieve.Publisher, prefix string, progress func(string)) sieve.Publisher {
+	if r, ok := pub.(sieve.Remote); ok {
+		r.Trace = &timing.Recorder{OnStage: func(s string) { progress(prefix + ": " + s) }}
+		return r
+	}
+	return pub
+}
+
+// busyBadge is the header's "⠋ applying plan to real · moving 3/9 · 0:42".
+func (m *Model) busyBadge() string {
+	s := m.spin.View() + " " + m.busy
+	if m.busyStage != "" {
+		s += " · " + m.busyStage
+	}
+	if d := time.Since(m.busyStart); d >= 2*time.Second {
+		s += fmt.Sprintf(" · %d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return s
 }
 
 // ---- messages ----
@@ -779,10 +829,11 @@ func (m *Model) confirmSearchRules(msg searchRulesMsg) {
 
 func (m *Model) undo() tea.Cmd {
 	c := m.d.Target.Cleaner()
-	return func() tea.Msg {
+	return m.runBusy("undoing", func(progress func(string)) tea.Msg {
+		c.Progress = func(done, total int) { progress(fmt.Sprintf("restoring %d/%d messages", done, total)) }
 		res, err := c.Undo()
 		return undoMsg{res: res, err: err}
-	}
+	})
 }
 
 func (m *Model) showItem(it plan.TrashItem) tea.Cmd {
@@ -814,12 +865,15 @@ func fingerprint(p *plan.Plan) string {
 
 // applyTo runs the plan against t. Sandbox applies stamp the plan validated
 // (if it didn't change meanwhile); real applies archive it.
-func (m *Model) applyTo(t plan.Target, refresh func() error) tea.Cmd {
+func (m *Model) applyTo(label string, t plan.Target, refresh func() error) tea.Cmd {
 	p := m.plan
 	fp := fingerprint(p)
 	path, applied := m.d.Config.PlanPath, m.d.Config.AppliedDir
-	return func() tea.Msg {
+	return m.runBusy(label, func(progress func(string)) tea.Msg {
+		t.Progress = progress
+		t.Publisher = traced(t.Publisher, "publishing rules", progress)
 		if refresh != nil {
+			progress("cloning sandbox (copying mail)")
 			if err := refresh(); err != nil {
 				return applyMsg{target: t.Name, err: fmt.Errorf("refresh sandbox: %w", err)}
 			}
@@ -841,7 +895,7 @@ func (m *Model) applyTo(t plan.Target, refresh func() error) tea.Cmd {
 			return nil
 		})
 		return out
-	}
+	})
 }
 
 // ---- staging ----
@@ -897,7 +951,7 @@ func (m *Model) confirmUndoBatch() {
 	m.openDialog("Undo last applied trash batch in "+m.d.Env+"?", []string{
 		"Moves the most recent applied batch back to its original folders.",
 		"Rule changes are not undone (edit the plan and apply again).",
-	}, action{"y", "undo", func() tea.Cmd { return tea.Batch(m.startBusy("undoing"), m.undo()) }})
+	}, action{"y", "undo", func() tea.Cmd { return m.undo() }})
 }
 
 func (m *Model) confirmDiscard() {
@@ -1145,14 +1199,14 @@ func (m *Model) openApply() {
 	lines := append(m.planSummary(), "", m.validatedLine())
 	if m.d.Env == "sandbox" {
 		m.openDialog("Apply plan to SANDBOX", lines, action{"y", "apply to sandbox", func() tea.Cmd {
-			return tea.Batch(m.startBusy("applying plan to sandbox"), m.applyTo(m.d.Target, nil))
+			return m.applyTo("applying plan to sandbox", m.d.Target, nil)
 		}})
 		return
 	}
 	var acts []action
 	if sb := m.d.Sandbox; sb != nil {
 		acts = append(acts, action{"s", "validate in fresh sandbox", func() tea.Cmd {
-			return tea.Batch(m.startBusy("cloning sandbox and applying plan"), m.applyTo(sb.Target, sb.Refresh))
+			return m.applyTo("validating in a fresh sandbox", sb.Target, sb.Refresh)
 		}})
 	}
 	acts = append(acts, action{"r", "apply to REAL…", func() tea.Cmd {
@@ -1161,8 +1215,8 @@ func (m *Model) openApply() {
 			return nil
 		}
 		pub, local := m.d.Target.Publisher, m.d.Config.SieveFile
-		return tea.Batch(m.startBusy("checking the Sieve server"), func() tea.Msg {
-			st, err := pub.Status(local)
+		return m.runBusy("checking the Sieve server", func(progress func(string)) tea.Msg {
+			st, err := traced(pub, "server", progress).Status(local)
 			return precheckMsg{st, err}
 		})
 	}})
@@ -1212,7 +1266,7 @@ func (m *Model) confirmReal(st *sieve.ServerStatus) {
 	}
 	lines = append(lines, m.validatedLine())
 	m.openDialog("Apply plan to REAL mail and server?", lines, action{"y", "apply to real", func() tea.Cmd {
-		return tea.Batch(m.startBusy("applying plan to real"), m.applyTo(target, nil))
+		return m.applyTo("applying plan to REAL", target, nil)
 	}})
 }
 
@@ -1237,9 +1291,10 @@ func (m *Model) queueCleanup() tea.Cmd {
 	}
 	rules := append([]sieve.Rule(nil), m.base.Rules...)
 	ix, training := m.d.Index, m.d.Config.TrainingFolder
-	return tea.Batch(m.startBusy("matching existing mail against rules"), func() tea.Msg {
+	return m.runBusy("matching existing mail against rules", func(progress func(string)) tea.Msg {
 		var out cleanupMsg
-		for _, r := range rules {
+		for i, r := range rules {
+			progress(fmt.Sprintf("rule %d/%d", i+1, len(rules)))
 			if r.Action != sieve.ActionTrash {
 				out.nonTrash++
 				continue

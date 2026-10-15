@@ -30,6 +30,8 @@ type Cleaner struct {
 	LockFile    string
 	JournalPath string
 	LockTimeout time.Duration
+	// Progress, if set, is called as files move (throttled; always on the last).
+	Progress func(done, total int)
 
 	lastBatch string
 }
@@ -87,8 +89,10 @@ func (c *Cleaner) Trash(msgs []index.Message) (Result, error) {
 	// Unbuffered: a line must hit the journal for every file that moved.
 	enc := json.NewEncoder(j)
 	keys := keyCache{root: c.Root}
+	tick := c.ticker(len(msgs))
 
-	for _, m := range msgs {
+	for i, m := range msgs {
+		tick(i)
 		if m.Folder == c.TrashFolder {
 			continue
 		}
@@ -111,7 +115,20 @@ func (c *Cleaner) Trash(msgs []index.Message) (Result, error) {
 		c.relocate(m.Key, c.TrashFolder, dst)
 		res.Moved++
 	}
+	tick(len(msgs))
 	return res, nil
+}
+
+// ticker reports progress at most every 100ms, and always at done == total.
+func (c *Cleaner) ticker(total int) func(done int) {
+	var last time.Time
+	return func(done int) {
+		if c.Progress == nil || (done < total && time.Since(last) < 100*time.Millisecond) {
+			return
+		}
+		last = time.Now()
+		c.Progress(done, total)
+	}
 }
 
 // Undo reverts the most recent batch not already undone.
@@ -145,10 +162,19 @@ func (c *Cleaner) Undo() (Result, error) {
 	defer unlock()
 
 	keys := keyCache{root: c.Root}
+	total, done := 0, 0
+	for _, e := range entries {
+		if e.Batch == last {
+			total++
+		}
+	}
+	tick := c.ticker(total)
 	for _, e := range entries {
 		if e.Batch != last {
 			continue
 		}
+		tick(done)
+		done++
 		src, err := keys.find(e.To, e.Key)
 		if err != nil {
 			res.skip(e.Key, e.Key+": not in "+e.To+" (expunged?)")
@@ -162,6 +188,7 @@ func (c *Cleaner) Undo() (Result, error) {
 		c.relocate(e.Key, e.From, dst)
 		res.Moved++
 	}
+	tick(total)
 
 	j, err := c.openJournal()
 	if err != nil {

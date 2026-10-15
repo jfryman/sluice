@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -412,5 +413,34 @@ func TestSaneboxFolders(t *testing.T) {
 	got = saneboxFolders(all, []string{"+SaneNews", "+SaneTomorrow", "+SaneMissing"})
 	if len(got) != 3 || got[0].Count != 2 || got[2].Folder != "+SaneMissing" {
 		t.Errorf("configured: %+v", got)
+	}
+}
+
+func TestBusyIndicator(t *testing.T) {
+	m := testModel(t, 2)
+	ch := make(chan tea.Msg, 1)
+	m.progCh = ch
+	m.startBusy("applying plan to REAL")
+	m.busyStart = m.busyStart.Add(-75 * time.Second)
+	m.Update(progressMsg{ch: ch, stage: "moving 3/9 messages"})
+	if b := m.busyBadge(); !strings.Contains(b, "applying plan to REAL · moving 3/9 messages · 1:15") {
+		t.Errorf("badge = %q", b)
+	}
+	if !strings.Contains(m.viewTabs(), "moving 3/9 messages") {
+		t.Errorf("header lacks the badge: %q", m.viewTabs())
+	}
+	// Progress from an older operation doesn't overwrite the current step.
+	m.Update(progressMsg{ch: make(chan tea.Msg), stage: "stale"})
+	if m.busyStage != "moving 3/9 messages" {
+		t.Errorf("stage = %q", m.busyStage)
+	}
+	// Action keys are refused with a reason; motions still work.
+	press(m, "t")
+	if !m.statusErr || !strings.HasPrefix(m.status, "busy — applying plan to REAL") {
+		t.Errorf("status = %q", m.status)
+	}
+	press(m, "j")
+	if m.lc.cur != 1 {
+		t.Errorf("motion while busy: cur = %d", m.lc.cur)
 	}
 }

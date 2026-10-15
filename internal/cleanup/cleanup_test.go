@@ -105,3 +105,30 @@ func TestScanGroupsTrashUndo(t *testing.T) {
 		t.Fatalf("rescan = %+v, %v", st, err)
 	}
 }
+
+func TestProgress(t *testing.T) {
+	root := t.TempDir()
+	mkdirs(t, root, "Archive", "Deleted Messages")
+	var msgs []index.Message
+	for i := 0; i < 3; i++ {
+		p := filepath.Join(root, fmt.Sprintf("Archive/cur/m%d,U=%d:2,S", i, i))
+		msg(t, p, "a@spam.example", "", time.Now())
+		msgs = append(msgs, index.Message{Key: fmt.Sprintf("m%d", i), Folder: "Archive", Path: p})
+	}
+	var calls [][2]int
+	c := &Cleaner{Root: root, TrashFolder: "Deleted Messages", LockFile: filepath.Join(root, "lock"),
+		JournalPath: filepath.Join(root, "j.jsonl"), Progress: func(d, n int) { calls = append(calls, [2]int{d, n}) }}
+	if res, err := c.Trash(msgs); err != nil || res.Moved != 3 {
+		t.Fatalf("trash: %+v %v", res, err)
+	}
+	if last := calls[len(calls)-1]; last != [2]int{3, 3} {
+		t.Errorf("trash progress = %v", calls)
+	}
+	calls = nil
+	if res, err := c.Undo(); err != nil || res.Moved != 3 {
+		t.Fatalf("undo: %+v %v", res, err)
+	}
+	if last := calls[len(calls)-1]; last != [2]int{3, 3} {
+		t.Errorf("undo progress = %v", calls)
+	}
+}

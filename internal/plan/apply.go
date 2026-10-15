@@ -24,6 +24,15 @@ type Target struct {
 	// AllowSwitchFrom is the other active script the user confirmed
 	// replacing (from a Status precheck); empty means never switch.
 	AllowSwitchFrom string
+	// Progress, if set, gets a short description of each apply step
+	// ("publishing rules", "moving 120/5012 messages").
+	Progress func(stage string)
+}
+
+func (t Target) progress(stage string) {
+	if t.Progress != nil {
+		t.Progress(stage)
+	}
 }
 
 func (t Target) Cleaner() *cleanup.Cleaner {
@@ -120,6 +129,7 @@ func Apply(p *Plan, t Target) (Report, error) {
 		if cur == next {
 			rep.RulesSame = true
 		} else {
+			t.progress("publishing rules")
 			log, err := t.Publisher.Publish(t.SieveFile, next, sieve.PublishOptions{AllowSwitchFrom: t.AllowSwitchFrom})
 			rep.RuleLog = log
 			if err != nil {
@@ -138,7 +148,9 @@ func Apply(p *Plan, t Target) (Report, error) {
 			msgs = append(msgs, index.Message{Key: r.Key, Folder: r.Folder})
 		}
 	}
-	res, err := t.Cleaner().Trash(msgs)
+	c := t.Cleaner()
+	c.Progress = func(done, total int) { t.progress(fmt.Sprintf("moving %d/%d messages", done, total)) }
+	res, err := c.Trash(msgs)
 	rep.Batch, rep.Moved, rep.Skipped = res.Batch, res.Moved, res.Skipped
 	for _, it := range p.Trash {
 		ir := ItemReport{Label: it.Label, Planned: len(it.Refs)}
