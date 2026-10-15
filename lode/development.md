@@ -16,6 +16,7 @@ Related: [architecture.md](architecture.md), [practices.md](practices.md), [appl
 | `make install` | `check`, then install to `~/.local/bin/sluice` |
 | `make install-service` | install + `make install` the binary, copy `contrib/systemd/sluice-sweep.service` to `~/.config/systemd/user`, enable and (re)start it — **run on the machine that should host sweep, not the dev box** |
 | `make uninstall-service` / `make service-logs` | disable + remove the unit / follow its journal |
+| `make package` / `make install-package` | copy `contrib/arch/{PKGBUILD,sluice.install}` to `bin/pkg/` and run `makepkg -fc` / `-fci` there (`MAKEPKG_FLAGS`, default `-s`; `-d` on the dev box where Go comes from mise). Warns when local commits aren't pushed — the package builds GitHub `main`. Building on a copy keeps makepkg from rewriting the tracked PKGBUILD's `pkgver` |
 | `make uninstall` | `uninstall-service` + remove `~/.local/bin/sluice`; config, plan, journal, index, sandbox stay. The PKGBUILD's dev-install refusal and `sluice.install` warning point here |
 | `make version` | print the version the next build will be stamped with |
 
@@ -83,9 +84,11 @@ flowchart LR
 - makepkg output under `contrib/arch/` is git-ignored.
 
 ```sh
-cd contrib/arch && makepkg -si        # build + test + install
-makepkg -fd                           # build without the pacman dep check (Go from mise, as on the dev box)
+make install-package                  # build + test + install (sudo pacman -U)
+make package MAKEPKG_FLAGS=-d         # build only, skip the pacman dep check (Go from mise, as on the dev box)
 ```
+`make package` verified 2026-10-15 on the dev box (after `make uninstall`): built
+`0.2.0.r5.g801d4ff`, tracked PKGBUILD left untouched.
 Verified 2026-10-15 on the aarch64 dev box: `makepkg -fd` built `0.1.0.r14.gca17861`, all tests
 passed in `check()`, `sluice version` showed the stamps, the binary is PIE, and `systemd-analyze
 --user verify` accepted the unit (apart from `/usr/bin/sluice` not being installed there). The dev

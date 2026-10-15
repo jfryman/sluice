@@ -130,7 +130,7 @@ On Arch Linux (x86_64 or aarch64) you can install it as a package instead. It bu
 systemd user unit:
 
 ```sh
-cd contrib/arch && makepkg -si                       # sluice-git
+make install-package                                 # builds and installs sluice-git (sudo pacman)
 systemctl --user enable --now sluice-sweep.service   # the +Sluice service, per user
 ```
 

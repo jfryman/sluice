@@ -18,8 +18,9 @@ VPKG     := github.com/jfryman/sluice/internal/version
 LDFLAGS  := -X $(VPKG).Version=$(VERSION) -X $(VPKG).Commit=$(COMMIT) \
             -X $(VPKG).Branch=$(BRANCH) -X $(VPKG).Date=$(DATE)
 
+.PHONY: pkg-check-pushed
 .PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install uninstall clean version $(BIN) \
-        install-service uninstall-service service-logs
+        install-service uninstall-service service-logs package install-package
 
 all: check build
 
@@ -86,6 +87,27 @@ uninstall-service:
 service-logs:
 	journalctl --user -u $(UNIT) -f
 
+# --- Arch package (contrib/arch); see lode/development.md#packaging -------------
+# makepkg runs on a copy under bin/pkg so it never rewrites contrib/arch/PKGBUILD's
+# pkgver line. The package builds GitHub main, so unpushed commits aren't in it.
+
+PKGDIR        := bin/pkg
+MAKEPKG_FLAGS ?= -s
+
+$(PKGDIR)/PKGBUILD: contrib/arch/PKGBUILD contrib/arch/sluice.install
+	@mkdir -p $(PKGDIR)
+	cp contrib/arch/PKGBUILD contrib/arch/sluice.install $(PKGDIR)/
+
+pkg-check-pushed:
+	@n=$$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0); \
+	if [ "$$n" != 0 ]; then echo "warning: $$n local commit(s) not pushed; the package builds GitHub main without them"; fi
+
+package: pkg-check-pushed $(PKGDIR)/PKGBUILD
+	cd $(PKGDIR) && makepkg -fc $(MAKEPKG_FLAGS)
+
+install-package: pkg-check-pushed $(PKGDIR)/PKGBUILD
+	cd $(PKGDIR) && makepkg -fci $(MAKEPKG_FLAGS)
+
 # --- sandbox: full reflink clone of real mail; see lode/apply/sandbox.md ----
 
 dev: build
@@ -101,4 +123,5 @@ watch:
 	scripts/watch.sh
 
 clean:
+	-chmod -R u+w bin 2>/dev/null
 	rm -rf bin
