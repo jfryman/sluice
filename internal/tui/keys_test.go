@@ -125,7 +125,7 @@ func TestPrefixAndTabs(t *testing.T) {
 		t.Fatalf("hh: tab=%d", m.tab)
 	}
 	press(m, "g", "T")
-	if m.tab != tabSanebox {
+	if m.tab != tabFolders {
 		t.Fatalf("gT: tab=%d", m.tab)
 	}
 	press(m, "g", "T")
@@ -360,20 +360,20 @@ func TestSearchRules(t *testing.T) {
 	}
 }
 
-func TestSaneboxTab(t *testing.T) {
+func TestFoldersTab(t *testing.T) {
 	m := testModel(t, 3) // Candidates rows d00–d02
-	m.sbFolders = []index.FolderCount{{Folder: "+SaneLater", Count: 5}, {Folder: "+SaneNews", Count: 2}}
-	m.sbFolder = "+SaneLater"
-	m.sbGroups = []index.Group{
+	m.flFolders = []index.FolderCount{{Folder: "+SaneLater", Count: 5}, {Folder: "+SaneNews", Count: 2}}
+	m.flFolder = "+SaneLater"
+	m.flGroups = []index.Group{
 		{Kind: index.KindSender, Value: "a@spam.example", Total: 3},
 		{Kind: index.KindList, Value: "deals.example", Total: 2},
 	}
 	m.applyFilter()
 	press(m, "2", "g", "t")
-	if m.tab != tabSanebox || len(m.sbView) != 2 {
-		t.Fatalf("tab=%d view=%d", m.tab, len(m.sbView))
+	if m.tab != tabFolders || len(m.flView) != 2 {
+		t.Fatalf("tab=%d view=%d", m.tab, len(m.flView))
 	}
-	// Marks are per list: SaneBox marks don't leak into Candidates.
+	// Marks are per list: Folders marks don't leak into Candidates.
 	press(m, "space", "space")
 	if ts := m.targets(0); len(ts) != 2 || ts[1].Kind != index.KindList {
 		t.Fatalf("targets = %+v", ts)
@@ -381,36 +381,41 @@ func TestSaneboxTab(t *testing.T) {
 	if len(m.marked) != 0 {
 		t.Fatalf("candidates marks = %v", m.marked)
 	}
-	// Rules staged from SaneBox keep each row's kind.
+	// Rules staged from Folders keep each row's kind.
 	if err := m.stageRules(m.targets(0), sieve.ActionTrash, ""); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.plan.Rules) != 2 || m.plan.Rules[1].Rule.Kind != sieve.KindList || len(m.sbMarked) != 0 {
-		t.Fatalf("plan = %+v marks = %v", m.plan.Rules, m.sbMarked)
+	if len(m.plan.Rules) != 2 || m.plan.Rules[1].Rule.Kind != sieve.KindList || len(m.flMarked) != 0 {
+		t.Fatalf("plan = %+v marks = %v", m.plan.Rules, m.flMarked)
 	}
 	press(m, "z", "h")
-	if len(m.sbView) != 0 {
-		t.Fatalf("zh should hide ruled senders: %+v", m.sbView)
+	if len(m.flView) != 0 {
+		t.Fatalf("zh should hide ruled senders: %+v", m.flView)
 	}
 	// ] moves to the next folder (and wraps), resetting the cursor.
 	m.d.Index = nil
-	m.switchSanebox(1)
-	if m.sbFolder != "+SaneNews" {
-		t.Fatalf("]: folder %q", m.sbFolder)
+	m.switchFolder(1)
+	if m.flFolder != "+SaneNews" {
+		t.Fatalf("]: folder %q", m.flFolder)
 	}
-	m.switchSanebox(1)
-	if m.sbFolder != "+SaneLater" {
-		t.Fatalf("] wrap: folder %q", m.sbFolder)
+	m.switchFolder(1)
+	if m.flFolder != "+SaneLater" {
+		t.Fatalf("] wrap: folder %q", m.flFolder)
 	}
 }
 
-func TestSaneboxFolders(t *testing.T) {
+func TestBrowseFolders(t *testing.T) {
 	all := []index.FolderCount{{Folder: "Archive", Count: 9}, {Folder: "+SaneLater", Count: 5}, {Folder: "+SaneTomorrow"}, {Folder: "+SaneNews", Count: 2}}
-	got := saneboxFolders(all, nil)
-	if len(got) != 2 || got[0].Folder != "+SaneLater" || got[1].Folder != "+SaneNews" {
+	got := browseFolders(all, nil)
+	// Default: SaneBox folders with mail (largest first), then Archive — even
+	// though Archive is the largest.
+	if len(got) != 3 || got[0].Folder != "+SaneLater" || got[1].Folder != "+SaneNews" || got[2].Folder != "Archive" {
 		t.Errorf("auto: %+v", got)
 	}
-	got = saneboxFolders(all, []string{"+SaneNews", "+SaneTomorrow", "+SaneMissing"})
+	if got := browseFolders(all[1:], nil); len(got) != 2 {
+		t.Errorf("no Archive: %+v", got)
+	}
+	got = browseFolders(all, []string{"+SaneNews", "+SaneTomorrow", "+SaneMissing"})
 	if len(got) != 3 || got[0].Count != 2 || got[2].Folder != "+SaneMissing" {
 		t.Errorf("configured: %+v", got)
 	}

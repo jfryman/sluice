@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Built
-Index, candidates, SaneBox tab, search (`name:`, `t` rules from a query), plan-first staging, full
+Index, candidates, Folders tab (SaneBox + Archive), search (`name:`, `t` rules from a query), plan-first staging, full
 reflink sandbox, apply (sandbox/real, TUI and headless), trash + undo, sweep service — all in daily
 use against KolabNow since 2026-10-14 (real applies of thousands of messages; `kolab` is the active
 script; `sluice-sweep.service` runs on the desktop).

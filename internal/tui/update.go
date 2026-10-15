@@ -61,15 +61,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyFilter()
 		return m, nil
 
-	case saneboxMsg:
-		if msg.req != m.sbFolder {
+	case foldersMsg:
+		if msg.req != m.flFolder {
 			return m, nil // stale: the folder was switched meanwhile
 		}
 		if msg.err != nil {
 			m.setErr(msg.err)
 			return m, nil
 		}
-		m.sbFolders, m.sbFolder, m.sbGroups = msg.folders, msg.folder, msg.groups
+		m.flFolders, m.flFolder, m.flGroups = msg.folders, msg.folder, msg.groups
 		m.applyFilter()
 		return m, nil
 

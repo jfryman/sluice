@@ -13,9 +13,9 @@ Related: [../apply/plan.md](../apply/plan.md), [../apply/sandbox.md](../apply/sa
 ```mermaid
 stateDiagram-v2
   [*] --> Candidates
-  Candidates --> SaneBox: l / gt / 2gt
-  SaneBox --> Rules: l
-  SaneBox --> Dialog: enter (folder messages) / t / x
+  Candidates --> Folders: l / gt / 2gt
+  Folders --> Rules: l
+  Folders --> Dialog: enter (folder messages) / t / x
   Rules --> Search: l
   Search --> Plan: l
   Plan --> Candidates: l (wraps)
@@ -33,14 +33,15 @@ plan undo/redo · `A` apply · `U` undo applied batch · `:` commands · `?` hel
 
 Targets for `t`/`f`/`r`/`x`: visual range, else marked rows, else `{count}` rows from the cursor.
 
-**SaneBox tab** (tab 2): browse SaneBox's pre-filtering one folder at a time. Folders are
-`sanebox_folders` (in order) or, when unset, every indexed `+Sane…` folder with mail (largest first);
-chips show counts, `[`/`]` switch (wrapping). Rows are `index.FolderGroups` (list else sender, counts
+**Folders tab** (tab 2): browse folders one at a time — by default SaneBox's pre-filtering plus
+Archive. Folders are `folders` (config, in order) or, when unset, every indexed `+Sane…` folder with
+mail (largest first) followed by `Archive` (`browseFolders`); chips show counts (the `+Sane` prefix
+is trimmed), `[`/`]` switch (wrapping). Rows are `index.FolderGroups` (list else sender, counts
 for that folder only). It reuses the Candidates actions via `groupList()` — `{view, all, lv, marked}`
 for whichever of the two tabs is active — so `targets()`, `space`, `t`/`f`/`r`/`x`, `V`, `zh` and
-`:filter` work on both; marks are per tab (`marked` / `sbMarked`). `enter` lists the group's messages
-in that folder (● unread) plus where else its mail is. `loadGroups()` also reloads SaneBox
-(`saneboxMsg`, dropped as stale when `req` ≠ the current folder).
+`:filter` work on both; marks are per tab (`marked` / `flMarked`). `enter` lists the group's messages
+in that folder (● unread) plus where else its mail is. `loadGroups()` also reloads the Folders tab
+(`loadFolders` → `foldersMsg`, dropped as stale when `req` ≠ the current folder).
 Group detail and trash-item listings are dialogs (scrollable; detail offers `s` to search the group).
 
 Apply dialog (real mode): full plan summary + collapsed sieve diff + validation status; `s` clones a
@@ -85,10 +86,10 @@ type Deps struct {
 }
 type Model struct {
   tab tab; ov overlay         // ovNone | ovDialog | ovPicker
-  lc, lb, lr, ls, lp listView // per-list cursor + scroll offset (lb = SaneBox)
+  lc, lf, lr, ls, lp listView // per-list cursor + scroll offset (lf = Folders)
   keys keyState; visual bool  // pending count/prefix; visual anchor
   groups, view []index.Group; marked map[string]bool
-  sbFolders []index.FolderCount; sbFolder string; sbGroups, sbView []index.Group; sbMarked map[string]bool
+  flFolders []index.FolderCount; flFolder string; flGroups, flView []index.Group; flMarked map[string]bool
   undoStack, redoStack []*plan.Plan
   base *sieve.Script          // this env's sieve file on disk
   plan *plan.Plan             // reloaded from disk on tab switch / mutation

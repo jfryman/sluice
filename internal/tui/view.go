@@ -67,8 +67,8 @@ func (m *Model) View() string {
 		switch m.tab {
 		case tabCandidates:
 			body = m.viewCandidates()
-		case tabSanebox:
-			body = m.viewSanebox()
+		case tabFolders:
+			body = m.viewFolders()
 		case tabRules:
 			body = m.viewRules()
 		case tabSearch:
@@ -87,7 +87,7 @@ func (m *Model) viewTabs() string {
 	if m.d.Env == "sandbox" {
 		badge = sSandbox.Render("SANDBOX " + m.d.Created.Format("01-02 15:04"))
 	}
-	names := []string{"1 Candidates", "2 SaneBox", "3 Rules", "4 Search", "5 Plan"}
+	names := []string{"1 Candidates", "2 Folders", "3 Rules", "4 Search", "5 Plan"}
 	var parts []string
 	for i, n := range names {
 		if tab(i) == m.tab {
@@ -157,7 +157,7 @@ func (m *Model) help() string {
 	switch m.tab {
 	case tabCandidates:
 		return "t/f/r plan rule · x plan trash · space mark · V visual · gl/gd/gs group · s sort · / find" + tail
-	case tabSanebox:
+	case tabFolders:
 		return "[ ] prev/next folder · enter messages · t/f/r plan rule · x plan trash · space mark · V visual · zh hide ruled · / find" + tail
 	case tabRules:
 		return "dd remove · x plan trash · V visual · / find" + tail
@@ -237,25 +237,25 @@ func (m *Model) viewCandidates() string {
 	return b.String()
 }
 
-func (m *Model) viewSanebox() string {
+func (m *Model) viewFolders() string {
 	var b strings.Builder
-	if len(m.sbFolders) == 0 {
+	if len(m.flFolders) == 0 {
 		if m.busy == "" {
-			b.WriteString(sMuted.Render("No SaneBox folders with mail (folders starting with +Sane, or set sanebox_folders)."))
+			b.WriteString(sMuted.Render("No folders to browse: no +Sane… folder or Archive holds mail (set folders = [...] in the config)."))
 		}
 		return b.String()
 	}
 	var chips []string
-	for _, f := range m.sbFolders {
+	for _, f := range m.flFolders {
 		chip := fmt.Sprintf("%s %d", strings.TrimPrefix(f.Folder, "+Sane"), f.Count)
-		if f.Folder == m.sbFolder {
+		if f.Folder == m.flFolder {
 			chips = append(chips, sTabOn.Render("["+chip+"]"))
 		} else {
 			chips = append(chips, sTabOff.Render(" "+chip+" "))
 		}
 	}
-	info := strings.Join(chips, " ") + sMuted.Render(fmt.Sprintf("   %d senders", len(m.sbView)))
-	if n := len(m.sbMarked); n > 0 {
+	info := strings.Join(chips, " ") + sMuted.Render(fmt.Sprintf("   %d senders", len(m.flView)))
+	if n := len(m.flMarked); n > 0 {
 		info += sWarn.Render(fmt.Sprintf(" · %d marked", n))
 	}
 	if m.hideRule {
@@ -272,11 +272,11 @@ func (m *Model) viewSanebox() string {
 	b.WriteString(sHead.Render(fmt.Sprintf("  %6s %5s %-10s %-6s %-10s %s %s",
 		"count", "unrd", "last", "kind", "rule", trunc("list / sender", vw), trunc("latest subject", sw))) + "\n")
 
-	start, end := m.lb.window(len(m.sbView), m.listHeight())
+	start, end := m.lf.window(len(m.flView), m.listHeight())
 	for i := start; i < end; i++ {
-		g := m.sbView[i]
+		g := m.flView[i]
 		mark := "  "
-		if m.sbMarked[g.Value] {
+		if m.flMarked[g.Value] {
 			mark = sWarn.Render("▸ ")
 		}
 		rule := ""
@@ -291,14 +291,14 @@ func (m *Model) viewSanebox() string {
 			who += " (" + g.Name + ")"
 		}
 		subj := trunc(g.Subject, sw)
-		if i != m.lb.cur {
+		if i != m.lf.cur {
 			subj = sMuted.Render(subj)
 		}
 		line := fmt.Sprintf("%6d %5s %-10s %-6s %-10s %-*s %s",
 			g.Total, pct(g.Unread, g.Total), g.Last.Format("2006-01-02"), g.Kind, rule, vw, trunc(who, vw), subj)
-		b.WriteString(mark + m.rowStyle(i, m.lb.cur, line) + "\n")
+		b.WriteString(mark + m.rowStyle(i, m.lf.cur, line) + "\n")
 	}
-	if len(m.sbView) == 0 && m.busy == "" {
+	if len(m.flView) == 0 && m.busy == "" {
 		b.WriteString(sMuted.Render("  no senders"))
 	}
 	return b.String()

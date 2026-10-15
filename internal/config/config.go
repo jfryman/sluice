@@ -44,9 +44,9 @@ type Config struct {
 	// SyncCmd runs after a real apply or undo that moved mail on the IMAP
 	// server, so the local copies follow right away; empty waits for the timer.
 	SyncCmd []string `toml:"sync_cmd"`
-	// SaneboxFolders are the SaneBox tab's folders, in order; empty means
-	// every indexed folder starting with "+Sane" that holds mail.
-	SaneboxFolders []string `toml:"sanebox_folders"`
+	// BrowseFolders are the Folders tab's folders, in order; empty means
+	// every indexed "+Sane…" (SaneBox) folder that holds mail, then Archive.
+	BrowseFolders []string `toml:"folders"`
 	// SweepCleanup is what a sweep does with existing mail matching a new
 	// rule: "apply" (move it to trash now, journaled) or "queue" (plan item).
 	SweepCleanup string `toml:"sweep_cleanup"`

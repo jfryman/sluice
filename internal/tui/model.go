@@ -49,7 +49,7 @@ type tab int
 
 const (
 	tabCandidates tab = iota
-	tabSanebox
+	tabFolders
 	tabRules
 	tabSearch
 	tabPlan
@@ -93,7 +93,7 @@ type Model struct {
 	ov  overlay
 
 	// Vim state: per-list viewports, pending count/prefix, visual mode.
-	lc, lb, lr, ls, lp listView // candidates, sanebox, rules, search, plan
+	lc, lf, lr, ls, lp listView // candidates, folders, rules, search, plan
 	keys               keyState
 	visual             bool
 	vanchor            int
@@ -119,12 +119,13 @@ type Model struct {
 	filterText string
 	hideRule   bool
 
-	// SaneBox: one SaneBox folder at a time, grouped by list else sender.
+	// Folders tab: one folder (SaneBox's, Archive, …) at a time, grouped by
+	// list else sender.
 	// Shares the Candidates actions through groupList; filter/hide too.
-	sbFolders        []index.FolderCount
-	sbFolder         string
-	sbGroups, sbView []index.Group
-	sbMarked         map[string]bool
+	flFolders        []index.FolderCount
+	flFolder         string
+	flGroups, flView []index.Group
+	flMarked         map[string]bool
 
 	// Rules: base is this environment's sieve file as on disk.
 	base    *sieve.Script
@@ -168,7 +169,7 @@ func New(d Deps) *Model {
 	q.Placeholder = `list:foo older:1y unread   (from: name: domain: list: folder: subject: before: after: older: read unread)`
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
-	m := &Model{d: d, kind: index.KindList, marked: map[string]bool{}, sbMarked: map[string]bool{}, findIn: f, cmdInput: c, qinput: q, spin: sp, plan: &plan.Plan{}}
+	m := &Model{d: d, kind: index.KindList, marked: map[string]bool{}, flMarked: map[string]bool{}, findIn: f, cmdInput: c, qinput: q, spin: sp, plan: &plan.Plan{}}
 	m.loadScript()
 	m.reloadPlan()
 	if st, err := os.Stat(d.Config.SweepLog); err == nil {
@@ -511,32 +512,32 @@ func waitChan(ch chan tea.Msg) tea.Cmd {
 	}
 }
 
-// loadGroups reloads the Candidates groups and the SaneBox tab.
+// loadGroups reloads the Candidates groups and the Folders tab.
 func (m *Model) loadGroups() tea.Cmd {
 	ix, kind := m.d.Index, m.kind
 	return tea.Batch(func() tea.Msg {
 		gs, err := ix.Groups(kind, time.Now())
 		return groupsMsg{kind, gs, err}
-	}, m.loadSanebox())
+	}, m.loadFolders())
 }
 
-type saneboxMsg struct {
-	req     string // folder requested ("" = first); stale when it isn't m.sbFolder
+type foldersMsg struct {
+	req     string // folder requested ("" = first); stale when it isn't m.flFolder
 	folder  string
 	folders []index.FolderCount
 	groups  []index.Group
 	err     error
 }
 
-// loadSanebox loads the SaneBox folder list and the current folder's groups.
-func (m *Model) loadSanebox() tea.Cmd {
-	ix, want, req := m.d.Index, m.d.Config.SaneboxFolders, m.sbFolder
+// loadFolders loads the Folders tab's folder list and the current folder's groups.
+func (m *Model) loadFolders() tea.Cmd {
+	ix, want, req := m.d.Index, m.d.Config.BrowseFolders, m.flFolder
 	return func() tea.Msg {
 		all, err := ix.Folders()
 		if err != nil {
-			return saneboxMsg{req: req, err: err}
+			return foldersMsg{req: req, err: err}
 		}
-		msg := saneboxMsg{req: req, folders: saneboxFolders(all, want)}
+		msg := foldersMsg{req: req, folders: browseFolders(all, want)}
 		for _, f := range msg.folders {
 			if f.Folder == req || msg.folder == "" {
 				msg.folder = f.Folder
@@ -549,15 +550,16 @@ func (m *Model) loadSanebox() tea.Cmd {
 	}
 }
 
-// saneboxFolders picks the configured folders (in order, even if empty), or
-// every "+Sane…" folder holding mail.
-func saneboxFolders(all []index.FolderCount, want []string) []index.FolderCount {
+// browseFolders picks the configured folders (in order, even if empty),
+// or by default every "+Sane…" (SaneBox) folder holding mail, largest
+// first, then Archive.
+func browseFolders(all []index.FolderCount, want []string) []index.FolderCount {
+	have := map[string]index.FolderCount{}
+	for _, f := range all {
+		have[f.Folder] = f
+	}
 	var out []index.FolderCount
 	if len(want) > 0 {
-		have := map[string]index.FolderCount{}
-		for _, f := range all {
-			have[f.Folder] = f
-		}
 		for _, w := range want {
 			fc, ok := have[w]
 			if !ok {
@@ -572,27 +574,30 @@ func saneboxFolders(all []index.FolderCount, want []string) []index.FolderCount 
 			out = append(out, f)
 		}
 	}
+	if a, ok := have["Archive"]; ok && a.Count > 0 {
+		out = append(out, a)
+	}
 	return out
 }
 
-// switchSanebox moves n folders along the SaneBox folder list (wrapping).
-func (m *Model) switchSanebox(n int) tea.Cmd {
-	if len(m.sbFolders) == 0 {
+// switchFolder moves n folders along the Folders tab's list (wrapping).
+func (m *Model) switchFolder(n int) tea.Cmd {
+	if len(m.flFolders) == 0 {
 		return nil
 	}
 	i := 0
-	for j, f := range m.sbFolders {
-		if f.Folder == m.sbFolder {
+	for j, f := range m.flFolders {
+		if f.Folder == m.flFolder {
 			i = j
 		}
 	}
-	k := len(m.sbFolders)
-	m.sbFolder = m.sbFolders[((i+n)%k+k)%k].Folder
-	m.sbMarked, m.visual, m.lb = map[string]bool{}, false, listView{}
-	return m.loadSanebox()
+	k := len(m.flFolders)
+	m.flFolder = m.flFolders[((i+n)%k+k)%k].Folder
+	m.flMarked, m.visual, m.lf = map[string]bool{}, false, listView{}
+	return m.loadFolders()
 }
 
-// groupList is the active grouped list: Candidates or SaneBox rows, all
+// groupList is the active grouped list: Candidates or Folders rows, all
 // groups (marks may be on hidden rows), viewport and marks.
 type groupList struct {
 	view, all []index.Group
@@ -601,13 +606,13 @@ type groupList struct {
 }
 
 func (m *Model) groupList() groupList {
-	if m.tab == tabSanebox {
-		return groupList{m.sbView, m.sbGroups, &m.lb, m.sbMarked}
+	if m.tab == tabFolders {
+		return groupList{m.flView, m.flGroups, &m.lf, m.flMarked}
 	}
 	return groupList{m.view, m.groups, &m.lc, m.marked}
 }
 
-// loadFolderMessages lists one SaneBox group's messages in folder, with a
+// loadFolderMessages lists one Folders-tab group's messages in folder, with a
 // summary of where else that sender's mail is.
 func (m *Model) loadFolderMessages(g index.Group, folder string) tea.Cmd {
 	ix := m.d.Index
@@ -955,7 +960,7 @@ func (m *Model) targets(count int) []index.Group {
 
 func (m *Model) exitSelection() {
 	m.visual = false
-	m.marked, m.sbMarked = map[string]bool{}, map[string]bool{}
+	m.marked, m.flMarked = map[string]bool{}, map[string]bool{}
 }
 
 func (m *Model) setKind(k index.Kind) tea.Cmd {
@@ -1070,7 +1075,7 @@ func (m *Model) stageRules(targets []index.Group, action sieve.Action, folder st
 		}
 		rules = append(rules, r)
 	}
-	m.marked, m.sbMarked = map[string]bool{}, map[string]bool{}
+	m.marked, m.flMarked = map[string]bool{}, map[string]bool{}
 	return m.mutate(func(p *plan.Plan) error {
 		for _, r := range rules {
 			p.SetRule("add", r)
@@ -1079,7 +1084,7 @@ func (m *Model) stageRules(targets []index.Group, action sieve.Action, folder st
 	})
 }
 
-// applyFilter rebuilds the Candidates and SaneBox rows from :filter and zh.
+// applyFilter rebuilds the Candidates and Folders rows from :filter and zh.
 func (m *Model) applyFilter() {
 	f := strings.ToLower(strings.TrimSpace(m.filterText))
 	keep := func(all []index.Group) []index.Group {
@@ -1097,9 +1102,9 @@ func (m *Model) applyFilter() {
 		}
 		return out
 	}
-	m.view, m.sbView = keep(m.groups), keep(m.sbGroups)
+	m.view, m.flView = keep(m.groups), keep(m.flGroups)
 	m.lc.fix(len(m.view), m.listHeight())
-	m.lb.fix(len(m.sbView), m.listHeight())
+	m.lf.fix(len(m.flView), m.listHeight())
 }
 
 func (m *Model) openDialog(title string, lines []string, actions ...action) {

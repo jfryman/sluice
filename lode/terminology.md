@@ -7,7 +7,7 @@
 - Info flags - the maildir suffix after `:2,` (`S` seen, `R` replied, `F` flagged, `T` trashed, `D` draft).
 - `U=` - mbsync's IMAP UID embedded in filenames; MUST be stripped when a file is moved to another folder.
 - mail-sync - James's wrapper that runs mbsync under `$XDG_RUNTIME_DIR/mbsync.lock` (flock).
-- SaneBox folders - `+SaneBlackHole`, `+SaneNews`, `+SaneLater`, etc.; SaneBox's own triage, used as a spam signal and browsable in the TUI's SaneBox tab.
+- SaneBox folders - `+SaneBlackHole`, `+SaneNews`, `+SaneLater`, etc.; SaneBox's own triage, used as a spam signal and browsable (with Archive) in the TUI's Folders tab.
 - Group - an aggregation of messages by a group kind: `list` (List-Id), `domain` (From domain), or `sender` (From address).
 - Candidate - a group ranked as a likely rule target (high volume, mostly unread / black-holed).
 - Score - heuristic ranking value for a candidate; see [mail/index.md](mail/index.md).

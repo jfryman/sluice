@@ -57,7 +57,7 @@ Black-hole / news folder names come from config (`blackhole_folders`, `news_fold
 
 `index.FolderGroups(folder)` groups **one folder** the way rules are derived (sweep, Search `t`):
 `list` by `list_id` when set, else `sender` by `from_addr`; Total/Unread/Last count that folder only,
-largest first. `index.Folders()` lists every folder with count + unread. Both feed the SaneBox tab.
+largest first. `index.Folders()` lists every folder with count + unread. Both feed the Folders tab.
 
 ```sql
 SELECT CASE WHEN coalesce(list_id,'') != '' THEN 'list' ELSE 'sender' END AS k,

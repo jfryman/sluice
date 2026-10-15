@@ -67,7 +67,7 @@ const (
 	scGlobal scope = iota
 	scList
 	scCandidates
-	scSanebox
+	scFolders
 	scRules
 	scSearch
 	scPlan
@@ -75,7 +75,7 @@ const (
 )
 
 func (s scope) String() string {
-	return [...]string{"global", "lists", "candidates", "sanebox", "rules", "search", "plan", "dialog"}[s]
+	return [...]string{"global", "lists", "candidates", "folders", "rules", "search", "plan", "dialog"}[s]
 }
 
 type binding struct {
@@ -111,8 +111,8 @@ func (m *Model) scopes() []scope {
 	switch m.tab {
 	case tabCandidates:
 		tabScope = scCandidates
-	case tabSanebox:
-		tabScope = scSanebox
+	case tabFolders:
+		tabScope = scFolders
 	case tabRules:
 		tabScope = scRules
 	case tabSearch:
@@ -174,8 +174,8 @@ func (m *Model) cur() (*listView, int, int) {
 	switch m.tab {
 	case tabCandidates:
 		return &m.lc, len(m.view), m.listHeight()
-	case tabSanebox:
-		return &m.lb, len(m.sbView), m.listHeight()
+	case tabFolders:
+		return &m.lf, len(m.flView), m.listHeight()
 	case tabRules:
 		return &m.lr, len(m.desired()), m.listHeight()
 	case tabSearch:
@@ -226,7 +226,7 @@ func (m *Model) switchTab(t tab) {
 
 func (m *Model) rowText(i int) string {
 	switch m.tab {
-	case tabCandidates, tabSanebox:
+	case tabCandidates, tabFolders:
 		g := m.groupList().view[i]
 		return g.Value + " " + g.Name + " " + g.Subject
 	case tabRules:

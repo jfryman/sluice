@@ -9,8 +9,8 @@ import (
 )
 
 func bindCandidates() {
-	// Shared by Candidates and SaneBox: both are grouped lists (groupList).
-	for _, sc := range []scope{scCandidates, scSanebox} {
+	// Shared by Candidates and Folders: both are grouped lists (groupList).
+	for _, sc := range []scope{scCandidates, scFolders} {
 		bind(sc, "space", false, "toggle mark", func(m *Model, c int) tea.Cmd {
 			gl := m.groupList()
 			for i := 0; i < or1(c) && gl.lv.cur < len(gl.view); i++ {
@@ -67,11 +67,11 @@ func bindCandidates() {
 		return nil
 	})
 
-	bind(scSanebox, "]", false, "next SaneBox folder", func(m *Model, c int) tea.Cmd { return m.switchSanebox(or1(c)) })
-	bind(scSanebox, "[", false, "previous SaneBox folder", func(m *Model, c int) tea.Cmd { return m.switchSanebox(-or1(c)) })
-	bind(scSanebox, "enter", false, "messages in this folder", func(m *Model, c int) tea.Cmd {
-		if m.lb.cur < len(m.sbView) {
-			return m.loadFolderMessages(m.sbView[m.lb.cur], m.sbFolder)
+	bind(scFolders, "]", false, "next folder", func(m *Model, c int) tea.Cmd { return m.switchFolder(or1(c)) })
+	bind(scFolders, "[", false, "previous folder", func(m *Model, c int) tea.Cmd { return m.switchFolder(-or1(c)) })
+	bind(scFolders, "enter", false, "messages in this folder", func(m *Model, c int) tea.Cmd {
+		if m.lf.cur < len(m.flView) {
+			return m.loadFolderMessages(m.flView[m.lf.cur], m.flFolder)
 		}
 		return nil
 	})

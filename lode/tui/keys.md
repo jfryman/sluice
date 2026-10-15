@@ -55,7 +55,7 @@ report says "A r y applies to real") needs a dialog-scope binding too; `A` has o
 | global | `h`/`l` or `gT`/`gt` prev/next tab (count repeats) · `{n}gt` tab n · `u` undo plan edit · `ctrl+r` redo · `U` undo applied trash batch · `A` apply · `:` command line · `?` help · `R` rescan · `q` / `ZZ` quit |
 | lists | `j`/`k` · `gg`/`G` (`{n}G` line n) · `ctrl+d`/`ctrl+u` half page · `ctrl+f`/`ctrl+b` page · `H`/`M`/`L` · `zz`/`zt`/`zb` · `ctrl+e`/`ctrl+y` · `/` search (not Search tab) · `n`/`N` next/prev match · `V` visual line · `esc` leave visual / clear marks |
 | candidates | `space` mark · `gl`/`gd`/`gs` group by list/domain/sender · `s`/`S` next/prev sort · `zh` hide ruled · `enter` detail · `t`/`f`/`r` plan rule · `x` plan trash of existing |
-| sanebox | `[`/`]` prev/next SaneBox folder (counts) · `enter` messages in this folder · shared with candidates: `space` mark · `zh` hide ruled · `t`/`f`/`r` plan rule · `x` plan trash of existing |
+| folders | `[`/`]` prev/next folder (counts) · `enter` messages in this folder · shared with candidates: `space` mark · `zh` hide ruled · `t`/`f`/`r` plan rule · `x` plan trash of existing |
 | rules | `dd` plan removal (`{n}dd`, or visual range) · `x` plan trash of existing |
 | search | `/` `i` `e` edit query · `t` plan trash rules for the matches' lists/senders (+ trash) · `X` plan trash of all matches |
 | plan | `dd` drop item(s) · `enter` show messages · `D` discard plan |
