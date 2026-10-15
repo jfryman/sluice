@@ -30,7 +30,3 @@ so mbsync no longer re-uploads every trashed message.
   Deleted Messages longer than N days by `SAVEDATE`, as a plan item with a capital-`Y` confirm) and
   James chose not to build it. Don't re-propose it.
 
-## Open issues found during discovery
-- `kolab.sieve` files into `Newsletters`, but no such folder exists locally — either the folder is
-  missing server-side (rule silently failing) or it's excluded from sync. Needs James to confirm
-  (raised twice, unanswered; substack/nytimes/mcsv mail still lands in Archive and +SaneLater).

@@ -6,7 +6,7 @@ Related: [remote.md](remote.md), [../mail/index.md](../mail/index.md).
 ## Contract
 - Sluice owns only the text between the markers; everything else is preserved byte-for-byte.
 - If no block exists it is inserted **immediately after the first `require` statement**, so managed
-  trash rules run before hand-written rules (e.g. the existing Newsletters rule).
+  trash rules run before any hand-written rules below it.
 - The `require [...]` list is merged to include `fileinto` and `imap4flags` if missing.
 - Each rule is preceded by a metadata comment; parsing reads only these comments (the Sieve
   text is regenerated from them), so the block round-trips deterministically.
