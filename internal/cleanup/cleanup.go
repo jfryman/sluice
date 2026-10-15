@@ -32,6 +32,8 @@ type Cleaner struct {
 	LockTimeout time.Duration
 	// Progress, if set, is called as files move (throttled; always on the last).
 	Progress func(done, total int)
+	// OnWait, if set, is called about once a second while waiting for mbsync.
+	OnWait func(waited time.Duration)
 
 	lastBatch string
 }
@@ -62,7 +64,7 @@ func (c *Cleaner) lock() (func(), error) {
 	if t == 0 {
 		t = 2 * time.Minute
 	}
-	return maildir.Lock(c.LockFile, t)
+	return maildir.LockWith(c.LockFile, maildir.LockOptions{Timeout: t, Root: c.Root, OnWait: c.OnWait})
 }
 
 // Trash moves msgs into the trash folder as one journaled batch.

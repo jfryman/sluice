@@ -83,3 +83,13 @@ func (r *Recorder) String() string {
 	parts = append(parts, fmt.Sprintf("total %.2fs", time.Since(r.start).Seconds()))
 	return strings.Join(parts, " · ")
 }
+
+// Clock renders a duration as m:ss, for "waited 1:05"-style progress.
+func Clock(d time.Duration) string {
+	return fmt.Sprintf("%d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+// WaitingForMbsync is the progress text while a lock wait is under way.
+func WaitingForMbsync(waited time.Duration) string {
+	return "waiting for mbsync to finish its sync · " + Clock(waited)
+}

@@ -61,8 +61,8 @@ outcome count tracked from startup). New outcomes reload plan + sieve + groups a
 "N msgs indexed". Long work runs through `runBusy(label, work(progress))`: a goroutine sends
 `progressMsg{ch, stage}` (non-blocking, buffer 16) and finally the result msg on the same channel;
 the `progressMsg` handler always re-waits on `msg.ch` but only updates `busyStage` when `ch ==
-progCh` (stale ops can't overwrite). Users: apply (sandbox / validate with "cloning sandbox (copying
-mail)" / real; server steps via `traced`), the server precheck, `U` undo (`restoring N/M`), `:cleanup`
+progCh` (stale ops can't overwrite). Users: apply (sandbox / validate with "waiting for mbsync…" then "cloning sandbox (copying
+mail)" / real; server steps via `traced`; lock waits), the server precheck, `U` undo (`restoring N/M`), `:cleanup`
 (`rule i/N`); the startup scan sets `busyStage` to `parsing headers N/M`. Others (`:sweep`, search,
 doctor) show label + elapsed only. Applies are not cancellable — stopping mid-move would leave the
 plan half-applied.

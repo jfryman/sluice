@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jfryman/sluice/internal/cleanup"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/timing"
 )
 
 // Target is an environment a plan can be applied to.
@@ -150,6 +152,7 @@ func Apply(p *Plan, t Target) (Report, error) {
 	}
 	c := t.Cleaner()
 	c.Progress = func(done, total int) { t.progress(fmt.Sprintf("moving %d/%d messages", done, total)) }
+	c.OnWait = func(w time.Duration) { t.progress(timing.WaitingForMbsync(w)) }
 	res, err := c.Trash(msgs)
 	rep.Batch, rep.Moved, rep.Skipped = res.Batch, res.Moved, res.Skipped
 	for _, it := range p.Trash {

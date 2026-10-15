@@ -58,7 +58,9 @@ See [../sieve/remote.md](../sieve/remote.md#server-model).
 
 Progress: `Target.Progress func(stage string)` (optional) gets `publishing rules` and, via
 `cleanup.Cleaner.Progress` (throttled to 100ms, always called at done == total),
-`moving N/M messages`. The TUI also wraps a `sieve.Remote` publisher with a `timing.Recorder` whose
+`moving N/M messages`, and `waiting for mbsync to finish its sync · m:ss` while the cleaner waits
+for the lock (`Cleaner.OnWait`). A report whose `Target` is empty means the apply failed before
+anything happened (the TUI then says "Nothing was published or moved."). The TUI also wraps a `sieve.Remote` publisher with a `timing.Recorder` whose
 `OnStage` reports server steps (`publishing rules: auth`). See [../tui/summary.md](../tui/summary.md).
 
 Headless: `sluice -apply` (real) or `sluice -sandbox -apply` prints the summary, asks `y/N` on

@@ -136,7 +136,7 @@ func run(o opts) error {
 	} else {
 		deps.Sandbox = &tui.SandboxTarget{
 			Target:  target("sandbox", sbCfg, sbPub, nil),
-			Refresh: func() error { return sb.Refresh(realCfg) },
+			Refresh: func(progress func(string)) error { return sb.RefreshProgress(realCfg, progress) },
 		}
 	}
 	_, err = tea.NewProgram(tui.New(deps), tea.WithAltScreen()).Run()

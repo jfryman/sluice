@@ -214,20 +214,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reloadPlan()
 		m.loadScript()
 		m.applyFilter()
-		lines := msg.rep.Lines()
+		var lines []string
+		if msg.rep.Target != "" { // empty: failed before anything was applied
+			lines = append(msg.rep.Lines(), "")
+		}
 		title := "Applied to " + msg.target
 		switch {
 		case msg.err != nil:
 			title = "Apply to " + msg.target + " FAILED"
-			lines = append(lines, "", "error: "+msg.err.Error())
+			lines = append(lines, "error: "+msg.err.Error())
+			if msg.rep.Target == "" {
+				lines = append(lines, "", "Nothing was published or moved.")
+			}
 			m.setErr(msg.err)
 		case msg.target == "real":
 			// The plan was archived; undoing back into it would re-apply it.
 			m.undoStack, m.redoStack = nil, nil
-			lines = append(lines, "", "Plan archived to "+msg.archived+"; the plan is now empty.")
+			lines = append(lines, "Plan archived to "+msg.archived+"; the plan is now empty.")
 			m.setStatus("applied to real; plan archived")
 		default:
-			lines = append(lines, "", m.validatedLine(), "Browse the result: sluice -sandbox")
+			lines = append(lines, m.validatedLine(), "Browse the result: sluice -sandbox")
 			m.setStatus("validated in sandbox — A r y applies to real")
 		}
 		m.openDialog(title, lines)

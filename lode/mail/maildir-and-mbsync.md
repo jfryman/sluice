@@ -39,7 +39,7 @@ sequenceDiagram
   participant L as mbsync.lock
   participant FS as maildir
   participant MB as mbsync (next run)
-  SB->>L: flock (poll, 2 min timeout)
+  SB->>L: flock (poll; give up after 2 min without mbsync progress)
   SB->>FS: link Archive/cur/K,U=10:2,S -> Deleted Messages/cur/K:2,S, remove source
   SB->>L: unlock
   MB->>FS: sees new file in Deleted Messages, missing UID 10 in Archive
@@ -47,8 +47,15 @@ sequenceDiagram
 ```
 
 ## Invariants
-- Hold `mbsync.lock` (`syscall.Flock LOCK_EX|LOCK_NB`, polled every 500 ms) for the whole batch;
-  give up after 2 min with "mbsync is still running".
+- Hold `mbsync.lock` (`syscall.Flock LOCK_EX|LOCK_NB`, polled every 500 ms) for the whole batch.
+  `maildir.LockWith(path, LockOptions{Timeout, Root, MaxWait, OnWait})` waits **while mbsync makes
+  progress**: every 5s it checks the newest mtime of `<root>/*/.mbsyncstate*` (two levels); any write
+  resets the idle clock. It gives up after `Timeout` (2m) with no state-file writes, or `MaxWait`
+  (30m) in total. `OnWait` reports the wait about once a second. `Lock(path, timeout)` is the plain
+  form (no activity tracking). The cleaner and sandbox refresh pass the mail root.
+- Every local move costs a full upload: mbsync has no server-side move, so a message moved into
+  `Deleted Messages` is APPENDed there and expunged from its source. ~4k moves kept mbsync busy for
+  10+ minutes (2026-10-14), holding the lock the whole time.
 - Never write into `new/`; moved files go to `cur/` with `:2,<flags>` preserved.
 - Never unlink. If the destination exists, skip and report.
 - Header parsing reads at most 64 KiB per file (stop at first blank line).

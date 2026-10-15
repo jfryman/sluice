@@ -3,6 +3,7 @@
 package sandbox
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -14,9 +15,14 @@ import (
 	"github.com/jfryman/sluice/internal/config"
 	"github.com/jfryman/sluice/internal/maildir"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/timing"
 )
 
-type Sandbox struct{ Dir string }
+type Sandbox struct {
+	Dir string
+	// LockTimeout is how long a refresh waits on an idle mbsync (default 2m).
+	LockTimeout time.Duration
+}
 
 func New(cfg config.Config) Sandbox { return Sandbox{Dir: cfg.SandboxDir} }
 
@@ -82,23 +88,34 @@ func (s Sandbox) Validate(real config.Config) error {
 // Refresh re-clones mail and the sieve script from the real environment and
 // clears the sandbox index and journal. The clone is taken under the real
 // mbsync lock so it is a consistent snapshot.
-func (s Sandbox) Refresh(real config.Config) error {
+func (s Sandbox) Refresh(real config.Config) error { return s.RefreshProgress(real, nil) }
+
+// RefreshProgress is Refresh, reporting its steps (waiting for a running
+// mbsync, copying mail) to progress if set. The lock is taken before the
+// old clone is touched, so a timeout leaves the existing sandbox intact.
+func (s Sandbox) RefreshProgress(real config.Config, progress func(stage string)) error {
+	if progress == nil {
+		progress = func(string) {}
+	}
 	if err := s.Validate(real); err != nil {
 		return err
 	}
 	if err := os.MkdirAll(s.Dir, 0o700); err != nil {
 		return err
 	}
+	unlock, err := maildir.LockWith(real.LockFile, maildir.LockOptions{Timeout: cmp.Or(s.LockTimeout, 2*time.Minute), Root: real.MailRoot,
+		OnWait: func(w time.Duration) { progress(timing.WaitingForMbsync(w)) }})
+	if err != nil {
+		return err
+	}
+	progress("cloning sandbox (copying mail)")
 	old := s.MailDir() + ".old"
 	if err := os.RemoveAll(old); err != nil {
+		unlock()
 		return err
 	}
 	if err := os.Rename(s.MailDir(), old); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	unlock, err := maildir.Lock(real.LockFile, 2*time.Minute)
-	if err != nil {
+		unlock()
 		return err
 	}
 	out, err := exec.Command("cp", "-a", "--reflink=auto", filepath.Clean(real.MailRoot), s.MailDir()).CombinedOutput()

@@ -32,7 +32,7 @@ import (
 // plan is applied to Target.
 type SandboxTarget struct {
 	Target  plan.Target
-	Refresh func() error
+	Refresh func(progress func(stage string)) error
 }
 
 type Deps struct {
@@ -865,7 +865,7 @@ func fingerprint(p *plan.Plan) string {
 
 // applyTo runs the plan against t. Sandbox applies stamp the plan validated
 // (if it didn't change meanwhile); real applies archive it.
-func (m *Model) applyTo(label string, t plan.Target, refresh func() error) tea.Cmd {
+func (m *Model) applyTo(label string, t plan.Target, refresh func(progress func(string)) error) tea.Cmd {
 	p := m.plan
 	fp := fingerprint(p)
 	path, applied := m.d.Config.PlanPath, m.d.Config.AppliedDir
@@ -873,8 +873,7 @@ func (m *Model) applyTo(label string, t plan.Target, refresh func() error) tea.C
 		t.Progress = progress
 		t.Publisher = traced(t.Publisher, "publishing rules", progress)
 		if refresh != nil {
-			progress("cloning sandbox (copying mail)")
-			if err := refresh(); err != nil {
+			if err := refresh(progress); err != nil {
 				return applyMsg{target: t.Name, err: fmt.Errorf("refresh sandbox: %w", err)}
 			}
 		}

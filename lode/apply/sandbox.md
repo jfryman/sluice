@@ -32,12 +32,17 @@ sequenceDiagram
   participant S as sandbox.Refresh
   participant L as real mbsync.lock
   S->>S: safety checks (Dir not inside/containing mail_root)
+  S->>L: flock (consistent snapshot; waits out an active mbsync, see maildir-and-mbsync.md)
   S->>S: rm -rf Dir/Mail.old; mv Dir/Mail Dir/Mail.old
-  S->>L: flock (consistent snapshot; mbsync can't rename mid-clone)
   S->>S: cp -a --reflink=auto mail_root Dir/Mail
   S->>L: unlock
   S->>S: copy sieve_file → kolab.sieve and remote/kolab; rm Dir/Mail.old, index, journal
 ```
+The lock is taken **before** the old clone is moved aside, so a lock timeout leaves the existing
+sandbox intact. `RefreshProgress(real, progress)` reports `waiting for mbsync to finish its sync ·
+m:ss` while waiting and `cloning sandbox (copying mail)` once locked (the TUI badge shows both);
+`Refresh` is the silent form. `Sandbox.LockTimeout` (default 2m) is the idle timeout.
+
 Refresh happens on first `-sandbox` launch, on `-reset-sandbox`, and **every time a plan is applied
 to the sandbox from real mode**, so validation always runs against current mail.
 
