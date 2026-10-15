@@ -22,5 +22,6 @@
   - [summary.md](tui/summary.md) — screens, layout, apply dialogs, model shape
   - [keys.md](tui/keys.md) — vim keymap, dispatcher (counts/prefixes/scopes), viewport, plan undo, `:` commands
 - plans/
-  - [roadmap.md](plans/roadmap.md) — built status, first-apply checklist, later ideas, open issues
+  - [roadmap.md](plans/roadmap.md) — built status, next, later ideas, open issues
+  - [imap-move.md](plans/imap-move.md) — planned server-side trash moves (IMAP MOVE, far-UID mapping, undo)
 - tmp/ — git-ignored session scraps
