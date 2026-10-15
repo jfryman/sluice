@@ -35,9 +35,9 @@ pkgver() {
 # (pacman ignores scriptlet failures, so sluice.install can only warn.)
 _check_dev_install() {
   local found=()
-  [[ -e "$HOME/.local/bin/sluice" ]] && found+=("$HOME/.local/bin/sluice  → rm ~/.local/bin/sluice")
+  [[ -e "$HOME/.local/bin/sluice" ]] && found+=("$HOME/.local/bin/sluice")
   [[ -e "$HOME/.config/systemd/user/sluice-sweep.service" ]] &&
-    found+=("$HOME/.config/systemd/user/sluice-sweep.service  → make uninstall-service (in the repo)")
+    found+=("$HOME/.config/systemd/user/sluice-sweep.service")
   ((${#found[@]})) || return 0
   if [[ -n "${SLUICE_ALLOW_DEV:-}" ]]; then
     warning "dev install present, building anyway (SLUICE_ALLOW_DEV)"
@@ -46,7 +46,8 @@ _check_dev_install() {
   error "A dev install of sluice is present; it would shadow this package:"
   local f
   for f in "${found[@]}"; do plain "  $f"; done
-  plain "Remove it, then run makepkg again (or set SLUICE_ALLOW_DEV=1 to build anyway)."
+  plain "Run \`make uninstall\` in the repo (removes both), then makepkg again;"
+  plain "or set SLUICE_ALLOW_DEV=1 to build anyway."
   return 1
 }
 

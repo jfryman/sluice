@@ -84,6 +84,7 @@ Run it as a service on the machine that holds your synced mail:
 
 ```sh
 make install-service   # installs sluice and a systemd user unit, then starts `sluice sweep -watch`
+make uninstall         # stops the service, removes the unit and ~/.local/bin/sluice (keeps your data)
 make service-logs      # follow what it's doing (each sweep logs a `timing:` line)
 sluice sweep           # or process the folder once by hand (`:sweep` in the TUI)
 ```
@@ -135,7 +136,7 @@ systemctl --user enable --now sluice-sweep.service   # the +Sluice service, per 
 
 Use one or the other: a `~/.local/bin/sluice` from `make install` would come first on your PATH,
 and the repo's user unit would override the packaged one. So `makepkg` refuses to build while
-either is present. Delete `~/.local/bin/sluice` and run `make uninstall-service` first, or set
+either is present. Run `make uninstall` in the repo first (it removes both), or set
 `SLUICE_ALLOW_DEV=1` to build anyway. After upgrading the package, run
 `systemctl --user restart sluice-sweep.service`.
 

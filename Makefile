@@ -18,7 +18,7 @@ VPKG     := github.com/jfryman/sluice/internal/version
 LDFLAGS  := -X $(VPKG).Version=$(VERSION) -X $(VPKG).Commit=$(COMMIT) \
             -X $(VPKG).Branch=$(BRANCH) -X $(VPKG).Date=$(DATE)
 
-.PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install clean version $(BIN) \
+.PHONY: all build test vet fmt fmt-check check run scan dev dev-scan dev-reset watch install uninstall clean version $(BIN) \
         install-service uninstall-service service-logs
 
 all: check build
@@ -58,6 +58,11 @@ scan: build
 install: check build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/sluice
 
+# Removes what install / install-service put in place (binary + user unit).
+# Config, plan, journal, index and sandbox are left alone.
+uninstall: uninstall-service
+	rm -f $(HOME)/.local/bin/sluice
+
 # --- sweep service (systemd user unit) on the machine this is run on ---------
 
 UNIT_DIR := $(HOME)/.config/systemd/user
@@ -70,7 +75,7 @@ install-service: install
 	systemctl --user restart $(UNIT)   # pick up a newly installed binary
 
 uninstall-service:
-	-systemctl --user disable --now $(UNIT)
+	-systemctl --user disable --now $(UNIT) 2>/dev/null
 	rm -f $(UNIT_DIR)/$(UNIT)
 	systemctl --user daemon-reload
 

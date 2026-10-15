@@ -4,9 +4,9 @@
 _dev_installs() {
   local h
   for h in /root /home/*; do
-    [[ -e "$h/.local/bin/sluice" ]] && echo "    $h/.local/bin/sluice  (rm it)"
+    [[ -e "$h/.local/bin/sluice" ]] && echo "    $h/.local/bin/sluice"
     [[ -e "$h/.config/systemd/user/sluice-sweep.service" ]] &&
-      echo "    $h/.config/systemd/user/sluice-sweep.service  (make uninstall-service)"
+      echo "    $h/.config/systemd/user/sluice-sweep.service"
   done
 }
 
@@ -17,6 +17,7 @@ _warn_dev() {
   echo '==> WARNING: a dev install of sluice shadows this package:'
   echo "$found"
   echo '    ~/.local/bin comes first on PATH and a ~/.config unit overrides the packaged one.'
+  echo '    As that user, run `make uninstall` in the sluice repo to remove both.'
 }
 
 pre_install() {

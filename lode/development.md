@@ -16,6 +16,7 @@ Related: [architecture.md](architecture.md), [practices.md](practices.md), [appl
 | `make install` | `check`, then install to `~/.local/bin/sluice` |
 | `make install-service` | install + `make install` the binary, copy `contrib/systemd/sluice-sweep.service` to `~/.config/systemd/user`, enable and (re)start it — **run on the machine that should host sweep, not the dev box** |
 | `make uninstall-service` / `make service-logs` | disable + remove the unit / follow its journal |
+| `make uninstall` | `uninstall-service` + remove `~/.local/bin/sluice`; config, plan, journal, index, sandbox stay. The PKGBUILD's dev-install refusal and `sluice.install` warning point here |
 | `make version` | print the version the next build will be stamped with |
 
 ## Versioning
