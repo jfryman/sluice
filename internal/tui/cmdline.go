@@ -106,6 +106,8 @@ func init() {
 			return nil
 		}},
 		{"sweep", nil, "process the training folder once", func(m *Model, a string) tea.Cmd { return m.runSweep() }},
+		{"sync", nil, "update the local rules from the server (when safe)", func(m *Model, a string) tea.Cmd { return m.syncRules(false, true) }},
+		{"pull", nil, "adopt the server's rules over local edits (backs yours up)", func(m *Model, a string) tea.Cmd { return m.syncRules(true, true) }},
 		{"cleanup", nil, "queue trash of existing mail matching every trash rule", func(m *Model, a string) tea.Cmd { return m.queueCleanup() }},
 		{"doctor", nil, "check requirements (offline)", func(m *Model, a string) tea.Cmd { return m.runDoctor() }},
 		{"help", nil, "key + command help", func(m *Model, a string) tea.Cmd { m.openHelp(); return nil }},

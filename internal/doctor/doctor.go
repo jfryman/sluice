@@ -557,7 +557,7 @@ func (d *run) server() {
 	stat := d.o.RemoteStat
 	if stat == nil {
 		r := sieve.Remote{Server: d.cfg.SieveServer, Port: d.cfg.SievePort, Script: d.cfg.SieveScript,
-			User: d.cfg.User, UserCmd: d.cfg.UserCmd, PassCmd: d.cfg.PassCmd, Trace: rec}
+			User: d.cfg.User, UserCmd: d.cfg.UserCmd, PassCmd: d.cfg.PassCmd, Trace: rec, SyncState: d.cfg.SieveSync}
 		stat = func() (sieve.ServerStatus, error) { return r.Status(d.cfg.SieveFile) }
 	}
 	t0 := time.Now()
@@ -579,14 +579,19 @@ func (d *run) server() {
 		d.add("server", Warn, realOnly, fmt.Sprintf("%q not on %s (scripts: %s); the first apply will create and activate it", ours, srv, orNone(st.Scripts)),
 			"nothing to fix if that's intended: the first apply uploads "+d.cfg.SieveFile+" plus the plan")
 	case st.Drift:
-		d.add("server", Warn, realOnly, "remote script differs from "+d.cfg.SieveFile+"; applies will stop at the drift check",
-			"re-download the active script (e.g. `sieve-edit`) so local matches the server")
+		d.add("server", Warn, realOnly, d.cfg.SieveFile+" and the server's "+fmt.Sprintf("%q", ours)+" both changed since this machine last synced; applies stop until resolved",
+			"`sluice pull` adopts the server's script (backs yours up to "+d.cfg.SieveFile+".bak-<time>)")
+	case st.Sync == sieve.LocalMissing || st.Sync == sieve.Behind:
+		d.add("server", Warn, realOnly, fmt.Sprintf("the server has newer rules than %s (%s); sluice updates it before applying", d.cfg.SieveFile, st.Sync),
+			"nothing required; `sluice sync` updates it now")
 	case other != "":
 		d.add("server", Warn, realOnly, fmt.Sprintf("%q exists but %q is active; applying makes %q active instead", ours, other, ours),
 			"the REAL apply dialog asks you to confirm the switch; or set sieve_script = "+fmt.Sprintf("%q", other))
 	case st.Active == "":
 		d.add("server", Warn, realOnly, fmt.Sprintf("%q exists but no script is active", ours),
 			"nothing to fix: the next apply activates it")
+	case st.Sync == sieve.Ahead:
+		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active; local edits not yet published (the next apply publishes them)%s", srv, ours, took), "")
 	default:
 		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active, matches local%s", srv, ours, took), "")
 	}

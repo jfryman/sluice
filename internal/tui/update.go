@@ -46,7 +46,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.indexCount = msg.st.Total
 		m.setStatus("indexed %d messages in %d folders (+%d ~%d -%d) in %s",
 			msg.st.Total, msg.st.Folders, msg.st.Added, msg.st.Updated, msg.st.Removed, msg.st.Took.Round(1e6))
+		if !m.rulesSynced {
+			m.rulesSynced = true // once per session, after the startup scan
+			return m, tea.Batch(m.loadGroups(), m.syncRules(false, false))
+		}
 		return m, m.loadGroups()
+
+	case rulesSyncMsg:
+		m.busy = ""
+		switch {
+		case msg.err != nil:
+			m.setErr(fmt.Errorf("rules: %w", msg.err))
+			return m, nil
+		case msg.res.Updated:
+			m.loadScript()
+			m.applyFilter()
+			m.setStatus("%s", msg.res.Summary())
+			if msg.res.Backup != "" {
+				m.status += " · previous local file: " + msg.res.Backup
+			}
+		case msg.manual:
+			m.setStatus("%s", msg.res.Summary())
+		}
+		return m, nil
 
 	case groupsMsg:
 		if msg.err != nil {

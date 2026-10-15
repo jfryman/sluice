@@ -3,7 +3,6 @@ package sieve
 import (
 	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -34,7 +33,8 @@ type ServerStatus struct {
 	Scripts []string
 	Active  string // name of the active script, "" if none
 	Exists  bool   // the configured script is on the server
-	Drift   bool   // exists and differs from the local file
+	Drift   bool   // Sync == Conflict: both sides changed; publishing would lose one
+	Sync    SyncState
 }
 
 // OtherActive reports a different script that is currently active.
@@ -77,6 +77,9 @@ type Remote struct {
 	TLS     *tls.Config   // optional override (tests); default: system roots, ServerName=Server
 	Timeout time.Duration // per network step; default 60s
 	Trace   *timing.Recorder
+	// SyncState is this machine's record of the last-synced script
+	// fingerprint (see sync.go); empty disables the three-way check.
+	SyncState string
 }
 
 func (r Remote) Describe() string { return r.Server + " as " + r.Script }
@@ -116,7 +119,7 @@ func (r Remote) session(fn func(c *Client) error) error {
 }
 
 // serverStatus lists scripts and, if ours exists, compares it with localText.
-func (r Remote) serverStatus(c *Client, localText string) (ServerStatus, error) {
+func (r Remote) serverStatus(c *Client, localText string, localExists bool) (ServerStatus, error) {
 	var st ServerStatus
 	names, active, err := c.List()
 	if err != nil {
@@ -129,13 +132,15 @@ func (r Remote) serverStatus(c *Client, localText string) (ServerStatus, error) 
 		}
 	}
 	if !st.Exists {
+		st.Sync = NoRemote
 		return st, nil
 	}
 	remote, err := c.Get(r.Script)
 	if err != nil {
 		return st, err
 	}
-	st.Drift = normalize(remote) != normalize(localText)
+	st.Sync = classify(localText, localExists, remote, true, readRecord(r.SyncState))
+	st.Drift = st.Sync == Conflict
 	return st, nil
 }
 
@@ -147,8 +152,9 @@ func normalize(s string) string {
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n")
 }
 
-// ErrDrift means the server's script is not what the local file says.
-var ErrDrift = errors.New("remote script differs from local file; reconcile with sieve-edit first")
+// ErrDrift means the local file and the server script both changed since
+// this machine last synced (see sync.go).
+var ErrDrift = ErrConflict
 
 // Publish writes newText to localPath and makes it the active remote script,
 // in one session: list → (drift check if ours exists) → backup + write →
@@ -161,23 +167,28 @@ func (r Remote) Publish(localPath, newText string, opt PublishOptions) (log []st
 		return nil, err
 	}
 	defer unlock()
-	oldBytes, err := os.ReadFile(localPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	old, oldExists, err := readLocal(localPath)
+	if err != nil {
 		return nil, err
 	}
+	oldBytes := []byte(old)
 	err = r.session(func(c *Client) error {
-		st, err := r.serverStatus(c, string(oldBytes))
+		st, err := r.serverStatus(c, old, oldExists)
 		if err != nil {
 			return err
 		}
 		if err := checkSwitch(st, r.Script, opt); err != nil {
 			return err
 		}
-		switch {
-		case !st.Exists:
+		switch st.Sync {
+		case NoRemote:
 			log = append(log, fmt.Sprintf("no %q on server; creating it", r.Script))
-		case st.Drift:
+		case Conflict:
 			return ErrDrift
+		case Behind, LocalMissing:
+			return ErrBehind // newText was computed from a stale base
+		case Ahead:
+			log = append(log, "server unchanged since this machine's last sync; publishing local edits")
 		default:
 			log = append(log, "remote matches local")
 		}
@@ -207,7 +218,7 @@ func (r Remote) Publish(localPath, newText string, opt PublishOptions) (log []st
 			return fmt.Errorf("uploaded but activation failed: %w", err)
 		}
 		log = append(log, "activated "+r.Script)
-		return nil
+		return writeRecord(r.SyncState, newText)
 	})
 	return log, err
 }
@@ -215,14 +226,14 @@ func (r Remote) Publish(localPath, newText string, opt PublishOptions) (log []st
 // Status logs in, lists scripts and compares ours with localPath. It runs
 // the credential commands (may prompt).
 func (r Remote) Status(localPath string) (ServerStatus, error) {
-	local, err := os.ReadFile(localPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	local, exists, err := readLocal(localPath)
+	if err != nil {
 		return ServerStatus{}, err
 	}
 	var st ServerStatus
 	err = r.session(func(c *Client) error {
 		var err error
-		st, err = r.serverStatus(c, string(local))
+		st, err = r.serverStatus(c, local, exists)
 		return err
 	})
 	return st, err

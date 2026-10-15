@@ -179,7 +179,10 @@ func TestOnline(t *testing.T) {
 		fix  string
 	}{
 		{sieve.ServerStatus{Exists: true, Active: "kolab"}, nil, OK, ""},
-		{sieve.ServerStatus{Exists: true, Active: "kolab", Drift: true}, nil, Warn, "re-download"},
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Drift: true, Sync: sieve.Conflict}, nil, Warn, "sluice pull"},
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Sync: sieve.Behind}, nil, Warn, "sluice sync"},       // another machine published
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Sync: sieve.LocalMissing}, nil, Warn, "sluice sync"}, // new machine
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Sync: sieve.Ahead}, nil, OK, ""},                     // local edits, publishable
 		{sieve.ServerStatus{Exists: true}, nil, Warn, "activates"},
 		{sieve.ServerStatus{Exists: true, Active: "roundcube"}, nil, Warn, "confirm the switch"},
 		{sieve.ServerStatus{}, nil, Warn, "first apply"},                                              // no scripts at all

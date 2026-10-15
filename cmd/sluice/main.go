@@ -45,6 +45,8 @@ func main() {
 			os.Exit(doctorCmd(os.Args[2:]))
 		case "sweep":
 			os.Exit(sweepCmd(os.Args[2:]))
+		case "pull", "sync":
+			os.Exit(pullCmd(os.Args[1], os.Args[2:]))
 		case "version", "-version", "--version":
 			fmt.Println(version.Long())
 			return
@@ -59,7 +61,7 @@ func main() {
 	flag.BoolVar(&o.apply, "apply", false, "apply the plan headlessly to the selected environment and exit")
 	flag.BoolVar(&o.yes, "yes", false, "with -apply: don't ask for confirmation")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "%s\n\nUsage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n       sluice sweep [-watch] [-sandbox] [-plan PATH] [-config PATH]\n       sluice version\n\nFlags:\n", version.Short())
+		fmt.Fprintf(flag.CommandLine.Output(), "%s\n\nUsage: sluice [flags]\n       sluice doctor [-online] [-config PATH]\n       sluice sweep [-watch] [-sandbox] [-plan PATH] [-config PATH]\n       sluice sync | pull [-config PATH]\n       sluice version\n\nFlags:\n", version.Short())
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -73,7 +75,7 @@ func main() {
 // remoteFor builds the ManageSieve publisher for the real server.
 func remoteFor(c config.Config, trace *timing.Recorder) sieve.Remote {
 	return sieve.Remote{Server: c.SieveServer, Port: c.SievePort, Script: c.SieveScript,
-		User: c.User, UserCmd: c.UserCmd, PassCmd: c.PassCmd, Trace: trace}
+		User: c.User, UserCmd: c.UserCmd, PassCmd: c.PassCmd, Trace: trace, SyncState: c.SieveSync}
 }
 
 func openIndex(c config.Config) (*index.Index, error) {
@@ -240,6 +242,35 @@ func sweepCmd(args []string) int {
 	return 0
 }
 
+// pullCmd runs `sluice sync` (update the local sieve file from the server
+// when safe) or `sluice pull` (adopt the server's script even over local
+// edits, keeping a timestamped backup). Exit 0 ok, 1 error.
+func pullCmd(name string, args []string) int {
+	fs := flag.NewFlagSet(name, flag.ExitOnError)
+	cfgPath := fs.String("config", config.DefaultPath(), "config file")
+	fs.Parse(args)
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "sluice:", err)
+		return 1
+	}
+	r := remoteFor(cfg, nil)
+	op := r.Sync
+	if name == "pull" {
+		op = r.Pull
+	}
+	res, err := op(cfg.SieveFile)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "sluice:", err)
+		return 1
+	}
+	fmt.Println(res.Summary())
+	if res.Backup != "" {
+		fmt.Println("previous local file:", res.Backup)
+	}
+	return 0
+}
+
 // doctorCmd runs `sluice doctor`; exit 1 if any check failed.
 func doctorCmd(args []string) int {
 	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
@@ -316,6 +347,8 @@ func applyHeadless(realCfg config.Config, t plan.Target, yes bool) error {
 			return sieve.ErrOtherActive{Ours: ours, Active: other}
 		case st.Drift:
 			return sieve.ErrDrift
+		case st.Sync == sieve.Behind || st.Sync == sieve.LocalMissing:
+			fmt.Printf("  ↻ the server has newer rules (%s); they're pulled in before applying\n", st.Sync)
 		case !st.Exists:
 			fmt.Printf("  ! no %q on the server: this apply creates and activates it\n", ours)
 		case other != "":

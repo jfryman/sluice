@@ -49,7 +49,8 @@ re-verifies against a fresh `--list`. Headless `-apply` does the same; `-yes` re
 See [../sieve/remote.md](../sieve/remote.md#server-model).
 
 ## Apply (`plan.Apply(p, target) Report`)
-1. Rules: read target sieve file → `sieve.Parse` → apply ops → render. If text changed, publish via the
+1. Rules: on the real target, `Sync` the sieve file with the server first (another machine may have
+   published — [../sieve/sync.md](../sieve/sync.md)); then read target sieve file → `sieve.Parse` → apply ops → render. If text changed, publish via the
    target's publisher (real: native ManageSieve session; sandbox: file publisher). Publish failure aborts the
    whole apply before any mail moves.
 2. Trash: all refs from all items in **one** cleanup batch (so `U` undoes the entire apply).

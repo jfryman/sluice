@@ -16,7 +16,6 @@ so mbsync no longer re-uploads every trashed message.
 - Pattern rules (subject contains, header regex) beyond exact list/domain/sender.
 - Browse the sandbox from real mode without a second process (swap Deps in-app).
 - Plan export/import to named files beyond `-plan PATH`.
-- `sluice pull`: adopt the server script as local after drift (with backup).
 - Warn when a hand-written rule outside the managed block mentions the same sender as a managed rule.
 - notmuch integration as an alternative index backend.
 - Use KolabNow's spam verdict (`***SPAM***` subject prefix / X-Spam headers) as a score signal and a

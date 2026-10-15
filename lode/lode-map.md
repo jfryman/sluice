@@ -16,6 +16,7 @@
   - [index.md](mail/index.md) — SQLite schema, incremental scan, groups, score
 - sieve/
   - [managed-block.md](sieve/managed-block.md) — markers, rule metadata, match kinds, actions
+  - [sync.md](sieve/sync.md) — rules across machines: server is truth, per-machine sync record, Behind/Ahead/Conflict, sluice sync/pull
   - [remote.md](sieve/remote.md) — native ManageSieve client, credentials, timing, server model, publish flow
 - cleanup/
   - [search-and-trash.md](cleanup/search-and-trash.md) — query language, trash batches, journal, undo

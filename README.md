@@ -48,8 +48,13 @@ flowchart LR
 - **The sandbox** is a complete copy of your mailbox. On btrfs it uses reflinks, so copying ~100k
   messages takes about 3 seconds and almost no disk space. Applying a plan there first shows you
   exactly what would happen. The plan is marked ✓ *validated* until you change it again.
-- **Uploads check for drift:** if the Sieve script on the server doesn't match your local copy (say
-  you edited it somewhere else), sluice stops rather than overwriting it.
+- **Rules follow you between machines.** The server's Sieve script is the source of truth. sluice
+  keeps your local copy (`~/.config/sieve/kolab.sieve`) up to date: a new machine downloads it, and
+  when another machine (say the one running the sweep service) has published, sluice pulls those
+  rules in before applying. It does this when the TUI starts, before every apply and sweep, and on
+  `sluice sync` / `:sync`. If you edited the local file by hand *and* the server changed too,
+  sluice stops rather than overwriting either; `sluice pull` (or `:pull`) takes the server's version
+  and backs yours up to `kolab.sieve.bak-<time>`.
 - **Only one Sieve script can be active.** sluice uploads the whole `kolab` script (your text
   unchanged, its own block regenerated) and activates it. If the server has no script yet, the first
   apply creates it. sluice never silently switches off a different active script: if one exists,
@@ -180,7 +185,7 @@ Example: `domain:beehiiv.com older:1y unread`.
 
 **Commands** (`:` then tab to complete): `:apply [sandbox|real]`, `:group list|domain|sender`,
 `:sort score|90d|total|unread`, `:filter TEXT`, `:hide`/`:nohide`, `:search QUERY`, `:w PATH`,
-`:discard`, `:undo`, `:redo`, `:rescan`, `:sweep`, `:cleanup`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
+`:discard`, `:undo`, `:redo`, `:rescan`, `:sweep`, `:cleanup`, `:sync`, `:pull`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
 
 ## Command line
 
@@ -188,6 +193,7 @@ Example: `domain:beehiiv.com older:1y unread`.
 sluice [-config PATH] [-plan PATH] [-sandbox | -reset-sandbox] [-scan | -apply [-yes]]
 sluice doctor [-online] [-config PATH]
 sluice sweep [-watch] [-sandbox] [-plan PATH] [-config PATH]
+sluice sync | pull [-config PATH]
 sluice version
 ```
 
@@ -202,6 +208,8 @@ sluice version
 | `-config PATH` | use a different config file |
 | `doctor` | check the requirements; exits 1 if anything fails. `-online` also checks the Sieve server |
 | `sweep` | process the training folder once; exits 0 (done), 3 (mail was moved) or 1 (error). `-watch` keeps running as a service |
+| `sync` | bring `~/.config/sieve/kolab.sieve` up to date with the server when that's safe (new machine, or another machine published) |
+| `pull` | take the server's script even over local edits; yours is backed up to `kolab.sieve.bak-<time>` |
 | `version` (or `-version`) | print the version, commit, branch and build time |
 
 ## Configuration

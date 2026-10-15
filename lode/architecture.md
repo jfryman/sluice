@@ -84,6 +84,7 @@ CLI:
 | `-plan PATH` | use another plan file |
 | `-config PATH` | config file |
 | `sweep [-watch] [-sandbox] [-plan]` | process the training folder once (exit 0/3/1) or as a service — see [sweep.md](sweep.md) |
+| `sync` / `pull` | update the local sieve file from the server when safe / adopt the server's over local edits (timestamped backup) — see [sieve/sync.md](sieve/sync.md) |
 | `version` / `-version` | print build metadata (see [development.md](development.md#versioning)) |
 | `doctor [-online]` | subcommand (dispatched before flag parsing): requirement report, exit 1 on failure — see [doctor.md](doctor.md) |
 Build/test/sandbox: see [development.md](development.md) (`make`, `make watch`, `make dev`).

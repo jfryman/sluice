@@ -59,6 +59,7 @@ type Config struct {
 	JournalPath string `toml:"-"`
 	PlanPath    string `toml:"-"` // shared by real and sandbox modes
 	SweepLog    string `toml:"-"` // sweep outcomes (JSONL)
+	SieveSync   string `toml:"-"` // this machine's last-synced sieve script fingerprint
 	AppliedDir  string `toml:"-"` // archive of plans applied to real
 }
 
@@ -121,6 +122,7 @@ func Load(path string) (Config, error) {
 	c.PlanPath = filepath.Join(state, "plan.json")
 	c.AppliedDir = filepath.Join(state, "applied")
 	c.SweepLog = filepath.Join(state, "sweep.jsonl")
+	c.SieveSync = filepath.Join(state, "sieve-synced")
 	return c, nil
 }
 

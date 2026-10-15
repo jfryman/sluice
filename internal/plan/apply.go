@@ -135,6 +135,18 @@ func Apply(p *Plan, t Target) (Report, error) {
 	rep := Report{Target: t.Name}
 
 	if len(p.Rules) > 0 {
+		// Another machine may have published since this one last synced:
+		// bring the local file up to date before computing the change.
+		if s, ok := t.Publisher.(sieve.Syncer); ok {
+			t.progress("syncing rules from server")
+			res, err := s.Sync(t.SieveFile)
+			if err != nil {
+				return rep, fmt.Errorf("sync rules: %w", err)
+			}
+			if res.Updated {
+				rep.RuleLog = append(rep.RuleLog, res.Summary())
+			}
+		}
 		cur, next, err := t.SieveDiff(p)
 		if err != nil {
 			return rep, err
@@ -144,7 +156,7 @@ func Apply(p *Plan, t Target) (Report, error) {
 		} else {
 			t.progress("publishing rules")
 			log, err := t.Publisher.Publish(t.SieveFile, next, sieve.PublishOptions{AllowSwitchFrom: t.AllowSwitchFrom})
-			rep.RuleLog = log
+			rep.RuleLog = append(rep.RuleLog, log...)
 			if err != nil {
 				return rep, fmt.Errorf("publish: %w", err)
 			}

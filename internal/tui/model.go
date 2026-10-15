@@ -146,17 +146,18 @@ type Model struct {
 	dialog dialogState
 	picker pickerState
 
-	busy       string
-	spin       spinner.Model
-	scanCh     chan tea.Msg
-	progCh     chan tea.Msg // current runBusy operation's progress/result
-	busyStage  string       // current step of the busy operation, if reported
-	busyStart  time.Time
-	status     string
-	statusErr  bool
-	indexCount int
-	sweepSize  int64 // sweep log size / outcome count already seen
-	sweepSeen  int
+	busy        string
+	spin        spinner.Model
+	scanCh      chan tea.Msg
+	progCh      chan tea.Msg // current runBusy operation's progress/result
+	busyStage   string       // current step of the busy operation, if reported
+	busyStart   time.Time
+	status      string
+	statusErr   bool
+	indexCount  int
+	rulesSynced bool  // the startup rule sync has run
+	sweepSize   int64 // sweep log size / outcome count already seen
+	sweepSeen   int
 }
 
 func New(d Deps) *Model {
@@ -407,6 +408,41 @@ func tracedMover(mv cleanup.Mover, progress func(string)) cleanup.Mover {
 		return r
 	}
 	return mv
+}
+
+type rulesSyncMsg struct {
+	res    sieve.SyncResult
+	err    error
+	manual bool // :sync / :pull: report "in sync" too
+}
+
+// syncRules brings this environment's sieve file up to date with the
+// server (another machine may have published), or with pull adopts the
+// server's script over local edits. A no-op for the sandbox.
+func (m *Model) syncRules(pull, manual bool) tea.Cmd {
+	s, ok := m.d.Target.Publisher.(sieve.Remote)
+	if !ok {
+		if manual {
+			m.setErr(fmt.Errorf("rule sync is for the real environment (the sandbox has no server)"))
+		}
+		return nil
+	}
+	label := "syncing rules from server"
+	if pull {
+		label = "pulling rules from server"
+	}
+	path := m.d.Config.SieveFile
+	return m.runBusy(label, func(progress func(string)) tea.Msg {
+		r := traced(s, "server", progress).(sieve.Remote)
+		var res sieve.SyncResult
+		var err error
+		if pull {
+			res, err = r.Pull(path)
+		} else {
+			res, err = r.Sync(path)
+		}
+		return rulesSyncMsg{res, err, manual}
+	})
 }
 
 type syncMsg struct {
@@ -1287,9 +1323,9 @@ func (m *Model) confirmReal(st *sieve.ServerStatus) {
 			})
 			return
 		case st.Drift:
-			m.openDialog("Can't apply: server script differs from local", []string{
-				fmt.Sprintf("%q on the server doesn't match %s.", ours, m.d.Config.SieveFile),
-				"Re-download it (e.g. `sieve-edit`) so local matches the server, then apply again.",
+			m.openDialog("Can't apply: rules changed here and on the server", []string{
+				fmt.Sprintf("%s and the server's %q both changed since this machine last synced.", m.d.Config.SieveFile, ours),
+				":pull adopts the server's script (your file is backed up to .bak-<time>), then apply again.",
 				"", "Nothing was changed.",
 			})
 			return
@@ -1298,6 +1334,10 @@ func (m *Model) confirmReal(st *sieve.ServerStatus) {
 		case other != "":
 			lines = append(lines, fmt.Sprintf("⚠ %q is the active script now: applying makes %q active instead (switching %q off).", other, ours, other))
 			target.AllowSwitchFrom = other
+		case st.Sync == sieve.Behind || st.Sync == sieve.LocalMissing:
+			lines = append(lines, fmt.Sprintf("↻ server: %q has newer rules (another machine published); they're pulled in before applying", ours))
+		case st.Sync == sieve.Ahead:
+			lines = append(lines, fmt.Sprintf("✓ server: %q unchanged since this machine's last sync; your local edits are published too", ours))
 		default:
 			lines = append(lines, fmt.Sprintf("✓ server: %q matches local", ours))
 		}

@@ -251,7 +251,7 @@ func TestConfirmRealServerStates(t *testing.T) {
 		{sieve.ServerStatus{}, 1, "Apply plan to REAL mail and server?"},                                        // first publish
 		{sieve.ServerStatus{Exists: true, Active: "rc"}, 1, "Apply plan to REAL mail and server?"},              // switch, confirmed by y
 		{sieve.ServerStatus{Active: "rc", Scripts: []string{"rc"}}, 0, "Can't apply: another script is active"}, // blocked
-		{sieve.ServerStatus{Exists: true, Active: "kolab", Drift: true}, 0, "Can't apply: server script differs from local"},
+		{sieve.ServerStatus{Exists: true, Active: "kolab", Drift: true}, 0, "Can't apply: rules changed here and on the server"},
 	}
 	for i, c := range cases {
 		st := c.st

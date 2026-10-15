@@ -57,6 +57,8 @@ Correspondents/identities come from the index's `sent` table: To/Cc/Bcc and From
 ## Behaviour details
 - Sweep publishes **only its own new rules** on top of the current sieve file; pending plan rule
   ops stay pending. A pending op for the same (kind, value) is dropped (the sweep's add wins).
+- Before reading the base script, a sweep with drops `Sync`s the sieve file with the server
+  ([sieve/sync.md](sieve/sync.md)), so rules published from another machine are kept.
 - Publishing uses the normal path (drift check, active-script guard, checkscript). On failure the
   training message **stays in `+Sluice`** and is retried next sweep; the error is recorded.
 - Several drops of the same sender/list in one sweep → one rule, one trash item.

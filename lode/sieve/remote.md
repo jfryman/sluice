@@ -55,7 +55,8 @@ type ServerStatus struct {
   Scripts []string
   Active  string // name of the active script, "" if none
   Exists  bool   // sieve_script is on the server
-  Drift   bool   // exists and differs from the local file
+  Drift   bool   // Sync == Conflict (see sync.md)
+  Sync    SyncState // three-way state vs this machine's last-synced record
 }
 type PublishOptions struct{ AllowSwitchFrom string } // active script the user agreed to replace
 ```
@@ -63,7 +64,7 @@ type PublishOptions struct{ AllowSwitchFrom string } // active script the user a
 | server state | Status / doctor `-online` | Publish |
 |---|---|---|
 | ours exists, active, matches local | ✓ | normal |
-| ours exists, differs from local | ! drift | stop (`ErrDrift`) |
+| ours exists, differs from local | ! behind (sync fixes) / ✓ local edits / ! conflict | behind: `ErrBehind` (callers sync first); local edits: publish; conflict: `ErrDrift` — see [sync.md](sync.md) |
 | no scripts / ours missing, nothing active | ! "first apply will create + activate" | **first publish**: no drift check; upload local+plan, activate |
 | ours missing, **another script active** | ✗ "set `sieve_script` to it or deactivate it" | stop (`ErrOtherActive`), never switch it off |
 | ours exists, not active, nothing active | ! not active | activates ours |
@@ -84,11 +85,14 @@ sequenceDiagram
     R-->>T: ErrOtherActive
   end
   opt ours exists
-    R->>K: GETSCRIPT ours; compare with local → ErrDrift on mismatch
+    R->>K: GETSCRIPT ours; three-way check vs the sync record → ErrDrift / ErrBehind
   end
   R->>R: write kolab.sieve.bak, write new kolab.sieve
   R->>K: CHECKSCRIPT (if VERSION), PUTSCRIPT, SETACTIVE, LOGOUT
+  R->>R: write the sync record (fingerprint of the new script)
 ```
+Callers (`plan.Apply`, sweep) run `Remote.Sync` first, so a publish normally starts in sync — see
+[sync.md](sync.md).
 
 ## Testing
 `remote_test.go` runs an in-process fake ManageSieve server (real STARTTLS with a throwaway
@@ -104,4 +108,4 @@ authorisation — hence the `user` config key.
 ## Invariants
 - A failed checkscript leaves the server untouched; the local file is restored from `.bak`.
 - A missing remote script is the first-publish case (see Server model), not drift.
-- Trailing-whitespace/newline differences are ignored in the drift comparison.
+- Trailing-whitespace/newline differences are ignored in the comparison (and the fingerprint).

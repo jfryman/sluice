@@ -160,7 +160,15 @@ func Run(d Deps) (rep Report, err error) {
 		}
 	}
 
-	// Publish every new, unheld rule in one go.
+	// Publish every new, unheld rule in one go, on top of the server's
+	// current script (another machine may have published since).
+	if s, ok := d.Publisher.(sieve.Syncer); ok {
+		if res, err := s.Sync(cfg.SieveFile); err != nil {
+			return rep, fmt.Errorf("sync rules: %w", err)
+		} else if res.Updated {
+			rep.PublishLog = append(rep.PublishLog, res.Summary())
+		}
+	}
 	base, err := readScript(cfg.SieveFile)
 	if err != nil {
 		return rep, err
@@ -181,7 +189,7 @@ func Run(d Deps) (rep Report, err error) {
 			base.Upsert(g.rule)
 		}
 		log, err := d.Publisher.Publish(cfg.SieveFile, base.Render(cfg.TrashFolder), sieve.PublishOptions{})
-		rep.PublishLog = log
+		rep.PublishLog = append(rep.PublishLog, log...)
 		for _, g := range fresh {
 			if err != nil {
 				g.result, g.reason = Failed, "publish: "+err.Error()
