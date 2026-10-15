@@ -141,6 +141,8 @@ type Model struct {
 	status     string
 	statusErr  bool
 	indexCount int
+	sweepSize  int64 // sweep log size / outcome count already seen
+	sweepSeen  int
 }
 
 func New(d Deps) *Model {
@@ -156,6 +158,10 @@ func New(d Deps) *Model {
 	m := &Model{d: d, kind: index.KindList, marked: map[string]bool{}, findIn: f, cmdInput: c, qinput: q, spin: sp, plan: &plan.Plan{}}
 	m.loadScript()
 	m.reloadPlan()
+	if st, err := os.Stat(d.Config.SweepLog); err == nil {
+		outs, _ := sweep.ReadLog(d.Config.SweepLog)
+		m.sweepSize, m.sweepSeen = st.Size(), len(outs)
+	}
 	return m
 }
 
@@ -299,7 +305,34 @@ func (m *Model) plannedKeys() map[string]bool {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.startBusy("indexing mail"), m.startScan())
+	return tea.Batch(m.startBusy("indexing mail"), m.startScan(), m.pollSweepLog())
+}
+
+type sweepLogMsg struct {
+	size int64
+	seen int
+	outs []sweep.Outcome // new since the last poll
+}
+
+// pollSweepLog checks every 2s whether a sweep (usually the service)
+// appended outcomes, so the TUI can say so and pick up its plan changes.
+func (m *Model) pollSweepLog() tea.Cmd {
+	path, size, seen := m.d.Config.SweepLog, m.sweepSize, m.sweepSeen
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		st, err := os.Stat(path)
+		if err != nil || st.Size() == size {
+			return sweepLogMsg{size: size, seen: seen}
+		}
+		outs, err := sweep.ReadLog(path)
+		if err != nil {
+			return sweepLogMsg{size: size, seen: seen}
+		}
+		msg := sweepLogMsg{size: st.Size(), seen: len(outs)}
+		if len(outs) > seen {
+			msg.outs = outs[seen:]
+		}
+		return msg
+	})
 }
 
 func (m *Model) setStatus(format string, a ...any) {
@@ -913,6 +946,53 @@ func (m *Model) confirmReal(st *sieve.ServerStatus) {
 	m.openDialog("Apply plan to REAL mail and server?", lines, action{"y", "apply to real", func() tea.Cmd {
 		return tea.Batch(m.startBusy("applying plan to real"), m.applyTo(target, nil))
 	}})
+}
+
+type cleanupItem struct {
+	label string
+	refs  []plan.Ref
+}
+
+type cleanupMsg struct {
+	items    []cleanupItem
+	nonTrash int // managed rules that file or mark read: not cleaned up
+	err      error
+}
+
+// queueCleanup re-runs every managed trash rule over existing mail: each
+// rule with matches outside the trash (and training folder) becomes a
+// "cleanup: <kind> <value>" plan item. Plan-first like any other trash.
+func (m *Model) queueCleanup() tea.Cmd {
+	if m.base == nil {
+		m.setErr(fmt.Errorf("can't read %s", m.d.Config.SieveFile))
+		return nil
+	}
+	rules := append([]sieve.Rule(nil), m.base.Rules...)
+	ix, training := m.d.Index, m.d.Config.TrainingFolder
+	return tea.Batch(m.startBusy("matching existing mail against rules"), func() tea.Msg {
+		var out cleanupMsg
+		for _, r := range rules {
+			if r.Action != sieve.ActionTrash {
+				out.nonTrash++
+				continue
+			}
+			ms, err := ix.Matching(index.Kind(r.Kind), []string{r.Value}, true, 0)
+			if err != nil {
+				out.err = err
+				return out
+			}
+			it := cleanupItem{label: fmt.Sprintf("cleanup: %s %s", r.Kind, r.Value)}
+			for _, x := range ms {
+				if x.Folder != training {
+					it.refs = append(it.refs, plan.Ref{Key: x.Key, Folder: x.Folder})
+				}
+			}
+			if len(it.refs) > 0 {
+				out.items = append(out.items, it)
+			}
+		}
+		return out
+	})
 }
 
 type sweepMsg struct {

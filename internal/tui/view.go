@@ -27,6 +27,7 @@ var (
 	sVisual  = lipgloss.NewStyle().Background(visualBg)
 	sErr     = lipgloss.NewStyle().Foreground(danger)
 	sOK      = lipgloss.NewStyle().Foreground(ok)
+	sSweep   = lipgloss.NewStyle().Foreground(accent) // plan items queued by a sweep
 	sWarn    = lipgloss.NewStyle().Foreground(warn)
 	sAccent  = lipgloss.NewStyle().Foreground(accent)
 	sOverlay = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent).Padding(0, 1)
@@ -325,7 +326,14 @@ func (m *Model) viewPlan() string {
 		rows = append(rows, fmt.Sprintf("rule   %s %-7s %-40s %s", op, o.Rule.Kind, trunc(o.Rule.Value, 40), actionStyled(o.Rule)))
 	}
 	for _, t := range p.Trash {
-		rows = append(rows, fmt.Sprintf("trash  %6d msgs  %s  %s", len(t.Refs), trunc(t.Label, 50), sMuted.Render(t.FolderCounts())))
+		label := trunc(t.Label, 50)
+		switch {
+		case strings.HasPrefix(t.Label, "sweep (held"):
+			label = sWarn.Render("⚠ " + trunc(t.Label, 48))
+		case strings.HasPrefix(t.Label, "sweep:"):
+			label = sSweep.Render(label)
+		}
+		rows = append(rows, fmt.Sprintf("trash  %6d msgs  %s  %s", len(t.Refs), label, sMuted.Render(t.FolderCounts())))
 	}
 	start, end := m.lp.window(len(rows), m.listHeight())
 	for i := start; i < end; i++ {

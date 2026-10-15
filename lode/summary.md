@@ -10,6 +10,9 @@ every action goes into a persisted plan, and nothing touches mail or the server 
 applied — first to a full reflink sandbox clone to validate, then to real. Real applies publish via
 a built-in ManageSieve client (credentials: `user` + `mail-pass` from 1Password) and move messages
 into `Deleted Messages` (never deletes) under the mbsync lock, journaled for undo.
+The one deliberate exception is the **`+Sluice` sweep service** ([sweep.md](sweep.md)): a message
+dropped there publishes a narrow rule immediately and, by default, trashes existing matches right
+away (journaled, `U` undoes), with a desktop notification and a TUI status line.
 
 Name: a sluice is a gate that controls flow — the rules are the gate; cleanup is the one-off flush.
 

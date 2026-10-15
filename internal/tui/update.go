@@ -7,7 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/jfryman/sluice/internal/index"
+	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/sweep"
 	"github.com/jfryman/sluice/internal/version"
 )
 
@@ -108,6 +110,51 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.openDialog("Sweep "+m.d.Config.TrainingFolder, lines)
 		return m, m.loadGroups()
+
+	case cleanupMsg:
+		m.busy = ""
+		if msg.err != nil {
+			m.setErr(msg.err)
+			return m, nil
+		}
+		var lines []string
+		total := 0
+		if err := m.mutate(func(p *plan.Plan) error {
+			for _, it := range msg.items {
+				if n := p.AddTrash(it.label, it.refs); n > 0 {
+					total += n
+					lines = append(lines, fmt.Sprintf("  %6d  %s", n, it.label))
+				}
+			}
+			return nil
+		}); err != nil {
+			m.setErr(err)
+			return m, nil
+		}
+		if total == 0 {
+			lines = []string{"No existing mail matches a trash rule outside " + m.d.Config.TrashFolder + " (or it's already planned)."}
+		} else {
+			lines = append([]string{fmt.Sprintf("Queued %d messages in %d plan items:", total, len(lines)), ""}, lines...)
+			lines = append(lines, "", "Review in the Plan tab, then A s · A r y (u undoes).")
+			m.setStatus("queued cleanup of %d messages — A to apply", total)
+		}
+		if msg.nonTrash > 0 {
+			lines = append(lines, "", fmt.Sprintf("%d file/read rule(s) skipped: cleanup only trashes.", msg.nonTrash))
+		}
+		m.openDialog("Re-run cleanup for all rules", lines)
+		return m, nil
+
+	case sweepLogMsg:
+		m.sweepSize, m.sweepSeen = msg.size, msg.seen
+		b := sweep.Brief(msg.outs)
+		if b == "" {
+			return m, m.pollSweepLog()
+		}
+		m.loadScript()
+		m.reloadPlan()
+		m.applyFilter()
+		m.setStatus("swept %s: %s", m.d.Config.TrainingFolder, b)
+		return m, tea.Batch(m.loadGroups(), m.pollSweepLog())
 
 	case doctorMsg:
 		m.busy = ""

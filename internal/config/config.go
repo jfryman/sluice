@@ -36,6 +36,12 @@ type Config struct {
 	SweepInterval string `toml:"sweep_interval"`
 	// PostSweepCmd runs after a sweep moved local mail (e.g. ["mail-sync"]).
 	PostSweepCmd []string `toml:"post_sweep_cmd"`
+	// SweepCleanup is what a sweep does with existing mail matching a new
+	// rule: "apply" (move it to trash now, journaled) or "queue" (plan item).
+	SweepCleanup string `toml:"sweep_cleanup"`
+	// NotifyCmd gets a title and a body after a sweep that did something
+	// (e.g. ["notify-send", "-a", "sluice"]); empty disables.
+	NotifyCmd []string `toml:"notify_cmd"`
 
 	// Derived, not configurable.
 	IndexPath   string `toml:"-"`
@@ -69,6 +75,8 @@ func Default() Config {
 		SentFolders:      []string{"Sent Messages", "Sent Items"},
 		SweepInterval:    "5m",
 		PostSweepCmd:     []string{"mail-sync"},
+		SweepCleanup:     "apply",
+		NotifyCmd:        []string{"notify-send", "-a", "sluice"},
 	}
 }
 
@@ -84,6 +92,9 @@ func Load(path string) (Config, error) {
 		if _, err := toml.DecodeFile(path, &c); err != nil {
 			return c, fmt.Errorf("config %s: %w", path, err)
 		}
+	}
+	if c.SweepCleanup != "apply" && c.SweepCleanup != "queue" {
+		return c, fmt.Errorf("config %s: sweep_cleanup must be \"apply\" or \"queue\", not %q", path, c.SweepCleanup)
 	}
 	c.MailRoot = Expand(c.MailRoot)
 	c.LockFile = Expand(c.LockFile)

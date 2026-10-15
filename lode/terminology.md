@@ -29,7 +29,8 @@
 - Publisher - interface for making a script active: `sieve.Remote` (native ManageSieve) or `sieve.FilePublisher` (sandbox).
 - Batch - one trash operation (one journal id).
 - Training folder - the IMAP/maildir folder (`training_folder`, default `+Sluice`) James drops unwanted mail into.
-- Sweep - processing the training folder: publish a rule per drop, queue cleanup, move drops to trash (`sluice sweep`).
+- Sweep - processing the training folder: publish a rule per drop, move drops to trash, then trash existing matches (or queue them, `sweep_cleanup`) (`sluice sweep`).
+- Cleanup (`:cleanup`) - re-running every managed trash rule over existing mail as `cleanup:` plan items.
 - Held - a sweep outcome when the sender is a correspondent/own address: rule + cleanup queued, nothing published.
 - Correspondent - an address James has sent mail to (from `sent_folders`); never auto-blocked.
 - Doctor - `sluice doctor`: executable requirements check; each check is ok/warn/fail with a fix.

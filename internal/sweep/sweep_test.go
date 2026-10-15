@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jfryman/sluice/internal/cleanup"
 	"github.com/jfryman/sluice/internal/config"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/plan"
@@ -87,6 +88,7 @@ func (e *env) plan() *plan.Plan {
 
 func TestPublishAndQueue(t *testing.T) {
 	e := newEnv(t)
+	e.d.Cfg.SweepCleanup = "queue"
 	e.msg("Archive", "news@promo.example", "deals.promo.example", "")
 	e.msg("INBOX", "news@promo.example", "deals.promo.example", "")
 	e.msg("+Sluice", "news@promo.example", "deals.promo.example", "") // two drops, same list
@@ -188,6 +190,7 @@ func TestSkippedAndFailedStay(t *testing.T) {
 
 func TestRuleAlreadyExists(t *testing.T) {
 	e := newEnv(t)
+	e.d.Cfg.SweepCleanup = "queue"
 	e.msg("+Sluice", "a@spam.example", "", "")
 	Run(e.d)
 	e.msg("Archive", "a@spam.example", "", "")
@@ -195,6 +198,41 @@ func TestRuleAlreadyExists(t *testing.T) {
 	rep, err := Run(e.d)
 	if err != nil || len(rep.Outcomes) != 1 || rep.Outcomes[0].Result != Ruled || rep.Outcomes[0].Planned != 1 {
 		t.Fatalf("rep=%+v err=%v", rep, err)
+	}
+}
+
+// The default sweep_cleanup = apply trashes existing matches right away, in
+// their own batch after the drops, so U restores the cleanup only.
+func TestCleanupApplied(t *testing.T) {
+	e := newEnv(t)
+	e.msg("Archive", "news@promo.example", "deals.promo.example", "")
+	e.msg("INBOX", "news@promo.example", "deals.promo.example", "")
+	e.msg("+Sluice", "news@promo.example", "deals.promo.example", "")
+	e.msg("Sent Messages", "james@fryman.io", "", "pal@friend.example")
+	e.msg("Archive", "pal@friend.example", "", "")
+	e.msg("+Sluice", "pal@friend.example", "", "") // held: queued, not trashed
+
+	rep, err := Run(e.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Moved != 2 || rep.Cleaned != 2 || e.count("Archive") != 1 || e.count("INBOX") != 0 || e.count("Deleted Messages") != 4 {
+		t.Fatalf("rep=%+v archive=%d inbox=%d trash=%d", rep, e.count("Archive"), e.count("INBOX"), e.count("Deleted Messages"))
+	}
+	p := e.plan()
+	if len(p.Trash) != 1 || !strings.HasPrefix(p.Trash[0].Label, "sweep (held") {
+		t.Fatalf("plan trash = %+v", p.Trash)
+	}
+	if b := Brief(rep.Outcomes); !strings.Contains(b, "blocked deals.promo.example (2 trashed)") || !strings.Contains(b, "held pal@friend.example (1 queued)") {
+		t.Errorf("brief = %q", b)
+	}
+
+	c := &cleanup.Cleaner{Index: e.d.Index, Root: e.root, TrashFolder: e.cfg.TrashFolder, LockFile: e.cfg.LockFile, JournalPath: e.cfg.JournalPath}
+	if res, err := c.Undo(); err != nil || res.Moved != 2 {
+		t.Fatalf("undo: %+v %v", res, err)
+	}
+	if e.count("+Sluice") != 0 || e.count("INBOX") != 1 || e.count("Archive") != 2 {
+		t.Fatalf("after undo: sluice=%d inbox=%d archive=%d", e.count("+Sluice"), e.count("INBOX"), e.count("Archive"))
 	}
 }
 

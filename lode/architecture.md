@@ -31,7 +31,7 @@ flowchart TD
 | `internal/sieve`   | managed block edit, native ManageSieve client, `Publisher` (server / file) | [sieve/managed-block.md](sieve/managed-block.md), [sieve/remote.md](sieve/remote.md) |
 | `internal/plan`    | plan model, persistence, apply to a target | [apply/plan.md](apply/plan.md) |
 | `internal/sandbox` | full reflink clone environment | [apply/sandbox.md](apply/sandbox.md) |
-| `internal/sweep`   | training folder → rules + queued cleanup; watch loop | [sweep.md](sweep.md) |
+| `internal/sweep`   | training folder → rules + cleanup (trashed now or queued); watch loop + notify | [sweep.md](sweep.md) |
 | `internal/timing`  | stage-duration recorder for one-line timing logs | [sieve/remote.md](sieve/remote.md#timing) |
 | `internal/version` | build metadata (ldflags-stamped, VCS fallback) | [development.md](development.md#versioning) |
 | `internal/doctor`  | requirement checks → capabilities + fixes | [doctor.md](doctor.md) |
@@ -58,6 +58,8 @@ training_folder = "+Sluice"                         # drop-to-block folder (see 
 sent_folders    = ["Sent Messages", "Sent Items"]   # recipients here are never auto-blocked
 sweep_interval  = "5m"                              # watch-mode rescan fallback
 post_sweep_cmd  = ["mail-sync"]                     # after a sweep moved mail; [] waits for the timer; never run in -sandbox
+sweep_cleanup   = "apply"                           # existing matches: "apply" (trash now) | "queue" (plan item); validated at load
+notify_cmd      = ["notify-send", "-a", "sluice"]   # watch mode: + title + body after a sweep with outcomes; [] off
 ```
 Derived paths (real): index `$XDG_CACHE_HOME/sluice/index.db`, journal
 `$XDG_STATE_HOME/sluice/journal.jsonl`, plan `$XDG_STATE_HOME/sluice/plan.json`, applied-plan

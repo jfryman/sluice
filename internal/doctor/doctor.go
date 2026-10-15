@@ -136,6 +136,7 @@ func Run(cfg config.Config, o Options) Report {
 	d.mbsync()
 	d.sluiceOnPath()
 	d.postSweep()
+	d.notify()
 	d.sweepService()
 	d.lastSweep()
 	d.lock()
@@ -272,6 +273,18 @@ func (d *run) postSweep() {
 	}
 	d.add("post-sweep cmd", Warn, sweepCap, d.cfg.PostSweepCmd[0]+" not found",
 		"set post_sweep_cmd to your sync command (e.g. [\"mbsync\", \"-a\"]) or [] to wait for the sync timer")
+}
+
+func (d *run) notify() {
+	if len(d.cfg.NotifyCmd) == 0 {
+		return
+	}
+	if p, err := d.o.LookPath(d.cfg.NotifyCmd[0]); err == nil {
+		d.add("notify cmd", OK, sweepCap, p, "")
+		return
+	}
+	d.add("notify cmd", Warn, sweepCap, d.cfg.NotifyCmd[0]+" not found",
+		"install libnotify (notify-send), set notify_cmd to another notifier, or [] for no sweep notifications")
 }
 
 func (d *run) sluiceOnPath() {

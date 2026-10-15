@@ -58,13 +58,22 @@ message into the `+Sluice` folder.** The sweep service notices it after the next
 1. **Adds a rule** so mail like it goes straight to the trash from now on. It matches the message's
    mailing list (`List-Id`) if it has one, otherwise the exact sender address. It never blocks a
    whole domain on its own.
-2. **Queues cleanup** of mail you already have from that list or sender, as a plan item you review
-   and apply like any other (`A` in the TUI).
-3. **Moves your dropped message to the trash**, so an empty `+Sluice` means everything's been handled.
+2. **Moves your dropped message to the trash**, so an empty `+Sluice` means everything's been handled.
+3. **Cleans up** mail you already have from that list or sender by moving it to the trash too. `U`
+   in the TUI undoes the most recent cleanup. Set `sweep_cleanup = "queue"` to get a plan item to
+   review and apply (`A`) instead.
+
+Each sweep that does something sends a desktop notification (`notify_cmd`). A running TUI shows the
+result in its status line, and sweep plan items are highlighted in the Plan tab.
 
 If the sender is someone you've sent mail to, or one of your own addresses, sluice doesn't publish
-anything. It puts the rule and the cleanup in your plan for review instead (marked *held*). If
-publishing fails, the message stays in `+Sluice` and is tried again on the next sweep.
+anything or trash anything. It puts the rule and the cleanup in your plan for review instead
+(marked *held*). If publishing fails, the message stays in `+Sluice` and is tried again on the next
+sweep.
+
+To re-run every trash rule over the mail you already have (for example, after mail arrived before a
+rule existed), use `:cleanup` in the TUI. It queues one `cleanup:` plan item per rule that still has
+matches outside the trash.
 
 Run it as a service on the machine that holds your synced mail:
 
@@ -149,7 +158,7 @@ Example: `domain:beehiiv.com older:1y unread`.
 
 **Commands** (`:` then tab to complete): `:apply [sandbox|real]`, `:group list|domain|sender`,
 `:sort score|90d|total|unread`, `:filter TEXT`, `:hide`/`:nohide`, `:search QUERY`, `:w PATH`,
-`:discard`, `:undo`, `:redo`, `:rescan`, `:sweep`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
+`:discard`, `:undo`, `:redo`, `:rescan`, `:sweep`, `:cleanup`, `:doctor`, `:version`, `:tab N`, `:{n}`, `:q`.
 
 ## Command line
 
@@ -196,6 +205,8 @@ training_folder   = "+Sluice"                                   # drop-to-block 
 sent_folders      = ["Sent Messages", "Sent Items"]             # people you've written to are never auto-blocked
 sweep_interval    = "5m"                                        # how often the service rechecks, besides reacting to new mail
 post_sweep_cmd    = ["mail-sync"]                               # sync right after a sweep moves mail ([] = wait for the timer)
+sweep_cleanup     = "apply"                                     # "apply": trash existing matches right away; "queue": add a plan item
+notify_cmd        = ["notify-send", "-a", "sluice"]             # gets a title and body after each sweep that did something ([] = off)
 ```
 
 Files sluice keeps:

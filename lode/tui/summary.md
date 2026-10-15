@@ -40,6 +40,11 @@ refuses (drift, other script active while ours is missing).
 Sandbox mode offers only `y`. `:apply sandbox|real` jumps straight to those steps. After apply a report
 dialog shows per-item moved/planned counts and the sieve log.
 
+Sweep visibility: the TUI polls `sweep.jsonl` every 2s (`pollSweepLog` → `sweepLogMsg`, size +
+outcome count tracked from startup). New outcomes reload plan + sieve + groups and set the status to
+`swept +Sluice: blocked X (N trashed) · held Y (M queued)` (`sweep.Brief`). Plan tab colors
+`sweep:` items accent and `sweep (held…)` items warn with ⚠.
+
 Layout: tab bar · body · status line (message or `:`/`/` prompt on the left; `-- VISUAL LINE --` and
 pending count/prefix on the right) · one help line.
 
@@ -66,7 +71,7 @@ func (m *Model) desired() []sieve.Rule // base rules + plan ops
 func (m *Model) mutate(fn func(*plan.Plan) error) error // plan.Update under lock
 ```
 Typed msgs: `scanProgressMsg`/`scanDoneMsg`, `groupsMsg`, `detailMsg`, `searchMsg`, `retroMsg`
-(→ plan-trash dialog), `itemMsg`, `undoMsg`, `applyMsg`. Files: `model.go` (state, commands, plan
+(→ plan-trash dialog), `itemMsg`, `undoMsg`, `applyMsg`, `sweepMsg`/`sweepLogMsg`, `cleanupMsg`. Files: `model.go` (state, commands, plan
 staging + undo, apply dialogs, `/` prompt), `update.go` (msgs, prompt routing, picker), `keys.go`
 (dispatcher, viewport, global/list bindings), `keys_bind.go` (tab/dialog bindings), `cmdline.go`
 (`:` commands), `view.go` (rendering, `?` help). Keymap tests: `keys_test.go` drives `Model.key`

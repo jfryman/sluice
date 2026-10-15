@@ -1,6 +1,6 @@
 // Package sweep turns messages dropped into the training folder into Sieve
-// rules (published right away) and queued cleanup (plan items). See
-// lode/sweep.md.
+// rules (published right away) and cleanup of existing matching mail (moved
+// to trash now, or queued as plan items). See lode/sweep.md.
 package sweep
 
 import (
@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -42,17 +43,19 @@ type Outcome struct {
 	Result  string `json:"result"`
 	Reason  string `json:"reason,omitempty"`
 	Planned int    `json:"planned,omitempty"` // existing messages queued for cleanup
+	Trashed int    `json:"trashed,omitempty"` // existing messages moved to trash now
 }
 
 type Report struct {
 	Outcomes   []Outcome
 	PublishLog []string
 	Moved      int    // training messages moved to trash
+	Cleaned    int    // existing matching messages moved to trash
 	Timing     string // "scan 0.52s · … · total 1.20s" (empty when nothing ran)
 }
 
 // Changed reports whether local mail was moved (a sync would propagate it).
-func (r Report) Changed() bool { return r.Moved > 0 }
+func (r Report) Changed() bool { return r.Moved > 0 || r.Cleaned > 0 }
 
 type Deps struct {
 	Cfg       config.Config
@@ -82,6 +85,8 @@ type group struct {
 	result  string
 	reason  string
 	planned int
+	cleanup []index.Message // existing matches to trash now (sweep_cleanup = apply)
+	trashed int
 }
 
 // Run processes everything currently in the training folder once.
@@ -181,7 +186,9 @@ func Run(d Deps) (rep Report, err error) {
 		}
 	}
 
-	// Queue cleanup (and held rules) in the plan, then move processed drops.
+	// Queue cleanup (and held rules) in the plan, move processed drops, then
+	// trash existing matches as a separate batch so U undoes just the cleanup
+	// (undoing the drops would only get them swept again).
 	var finished []*group
 	for _, id := range order {
 		if g := groups[id]; g.result != Failed {
@@ -210,6 +217,27 @@ func Run(d Deps) (rep Report, err error) {
 		if err != nil {
 			return rep, fmt.Errorf("move processed messages: %w", err)
 		}
+
+		msgs = nil
+		for _, g := range finished {
+			msgs = append(msgs, g.cleanup...)
+		}
+		if len(msgs) > 0 {
+			stop = d.Timing.Time("cleanup")
+			res, err := c.Trash(msgs)
+			stop()
+			rep.Cleaned = res.Moved
+			for _, g := range finished {
+				for _, m := range g.cleanup {
+					if !res.SkippedKeys[m.Key] {
+						g.trashed++
+					}
+				}
+			}
+			if err != nil {
+				return rep, fmt.Errorf("clean up existing mail: %w", err)
+			}
+		}
 	}
 
 	now := d.Now().Format(time.RFC3339)
@@ -218,7 +246,7 @@ func Run(d Deps) (rep Report, err error) {
 		for i, f := range g.files {
 			rep.Outcomes = append(rep.Outcomes, Outcome{Time: now, Key: f.Name.Key, From: g.heads[i].FromAddr,
 				Subject: g.heads[i].Subject, Kind: string(g.rule.Kind), Value: g.rule.Value,
-				Result: g.result, Reason: g.reason, Planned: g.planned})
+				Result: g.result, Reason: g.reason, Planned: g.planned, Trashed: g.trashed})
 		}
 	}
 	for _, o := range skipped {
@@ -228,8 +256,10 @@ func Run(d Deps) (rep Report, err error) {
 	return rep, appendLog(cfg.SweepLog, rep.Outcomes)
 }
 
-// queue adds, per group, a trash item for existing matching mail and, for
-// held groups, the pending rule; sweep rules drop conflicting pending ops.
+// queue collects, per group, existing matching mail: held groups (and every
+// group with sweep_cleanup = queue) get a plan trash item, held groups also
+// the pending rule; the rest keep it in g.cleanup to trash now. Published
+// rules drop conflicting pending ops.
 func queue(d Deps, gs []*group) error {
 	_, err := plan.Update(d.Cfg.PlanPath, func(p *plan.Plan) error {
 		for _, g := range gs {
@@ -238,18 +268,25 @@ func queue(d Deps, gs []*group) error {
 				return err
 			}
 			var refs []plan.Ref
+			g.cleanup = nil
 			for _, m := range ms {
 				if m.Folder != d.Cfg.TrainingFolder {
 					refs = append(refs, plan.Ref{Key: m.Key, Folder: m.Folder})
+					g.cleanup = append(g.cleanup, m)
 				}
 			}
+			if g.result == Published {
+				p.DropRule(g.rule) // the published rule supersedes any pending op
+			}
+			if g.result != Held && d.Cfg.SweepCleanup != "queue" {
+				continue
+			}
+			g.cleanup = nil
 			label := fmt.Sprintf("sweep: %s %s", g.rule.Kind, g.rule.Value)
 			switch g.result {
 			case Held:
 				label = fmt.Sprintf("sweep (held: %s): %s %s", g.reason, g.rule.Kind, g.rule.Value)
 				p.SetRule("add", g.rule)
-			case Published:
-				p.DropRule(g.rule) // the published rule supersedes any pending op
 			}
 			g.planned = p.AddTrash(label, refs)
 		}
@@ -347,6 +384,9 @@ func (r Report) Summary() []string {
 	var out []string
 	for _, o := range outs {
 		line := fmt.Sprintf("%-9s %s %s", o.Result, o.Kind, o.Value)
+		if o.Trashed > 0 {
+			line += fmt.Sprintf("  (%d existing moved to trash)", o.Trashed)
+		}
 		if o.Planned > 0 {
 			line += fmt.Sprintf("  (%d existing queued in plan)", o.Planned)
 		}
@@ -356,4 +396,28 @@ func (r Report) Summary() []string {
 		out = append(out, line)
 	}
 	return out
+}
+
+// Brief is a one-line summary of outcomes, one entry per (kind, value), for
+// status lines and notifications; "" when there is nothing worth showing.
+func Brief(outs []Outcome) string {
+	seen := map[string]bool{}
+	var parts []string
+	for _, o := range outs {
+		id := o.Result + "\x00" + o.Kind + "\x00" + o.Value
+		if seen[id] || o.Result == Skipped {
+			continue
+		}
+		seen[id] = true
+		verb := map[string]string{Published: "blocked", Ruled: "already blocked", Held: "held", Failed: "failed"}[o.Result]
+		part := verb + " " + o.Value
+		switch {
+		case o.Trashed > 0:
+			part += fmt.Sprintf(" (%d trashed)", o.Trashed)
+		case o.Planned > 0:
+			part += fmt.Sprintf(" (%d queued)", o.Planned)
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, " · ")
 }

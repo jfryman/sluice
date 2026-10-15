@@ -82,4 +82,5 @@ after a real apply (restoring an archived plan would re-apply it). Edits made by
 | `:undo` · `:redo` · `:rescan` · `:tab N` · `:help` | as keys |
 | `:doctor` | offline requirement report for this environment in a dialog |
 | `:sweep` | process the training folder once for this environment; report dialog |
+| `:cleanup` | re-run every managed **trash** rule over existing mail: one `cleanup: <kind> <value>` plan item per rule with matches outside trash/training folder (refs already planned are skipped; `u` undoes); file/read rules are skipped and counted |
 | `:version` | build version / commit / branch in the status line |

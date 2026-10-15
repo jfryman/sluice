@@ -12,6 +12,7 @@ import (
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sieve"
+	"github.com/jfryman/sluice/internal/sweep"
 )
 
 func testModel(t *testing.T, groups int) *Model {
@@ -289,5 +290,31 @@ func TestApplyFromReportDialog(t *testing.T) {
 	press(m, "A")
 	if m.dialog.title != "Apply plan to REAL mail and server?" || m.ov != ovDialog {
 		t.Fatalf("A in confirm dialog: ov=%v dialog %q", m.ov, m.dialog.title)
+	}
+}
+
+func TestSweepLogAndCleanupMsgs(t *testing.T) {
+	m := testModel(t, 1)
+	m.Update(sweepLogMsg{size: 10, seen: 2, outs: []sweep.Outcome{
+		{Kind: "sender", Value: "a@spam.example", Result: sweep.Published, Trashed: 4},
+		{Kind: "sender", Value: "a@spam.example", Result: sweep.Published, Trashed: 4},
+	}})
+	if m.status != "swept +Sluice: blocked a@spam.example (4 trashed)" || m.sweepSeen != 2 {
+		t.Errorf("status %q seen %d", m.status, m.sweepSeen)
+	}
+
+	item := cleanupItem{label: "cleanup: sender a@spam.example", refs: []plan.Ref{{Key: "k1", Folder: "Archive"}, {Key: "k2", Folder: "INBOX"}}}
+	m.Update(cleanupMsg{items: []cleanupItem{item}, nonTrash: 1})
+	if len(m.plan.Trash) != 1 || m.plan.Messages() != 2 || m.ov != ovDialog {
+		t.Fatalf("plan %+v ov %v", m.plan.Trash, m.ov)
+	}
+	// Re-running adds nothing already planned.
+	m.Update(cleanupMsg{items: []cleanupItem{item}})
+	if len(m.plan.Trash) != 1 || !strings.HasPrefix(m.dialog.lines[0], "No existing mail") {
+		t.Fatalf("rerun: plan %+v dialog %q", m.plan.Trash, m.dialog.lines)
+	}
+	press(m, "esc", "u")
+	if !m.plan.Empty() {
+		t.Errorf("u should undo the queued cleanup: %+v", m.plan)
 	}
 }

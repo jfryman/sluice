@@ -106,6 +106,7 @@ func init() {
 			return nil
 		}},
 		{"sweep", nil, "process the training folder once", func(m *Model, a string) tea.Cmd { return m.runSweep() }},
+		{"cleanup", nil, "queue trash of existing mail matching every trash rule", func(m *Model, a string) tea.Cmd { return m.queueCleanup() }},
 		{"doctor", nil, "check requirements (offline)", func(m *Model, a string) tea.Cmd { return m.runDoctor() }},
 		{"help", nil, "key + command help", func(m *Model, a string) tea.Cmd { m.openHelp(); return nil }},
 	}

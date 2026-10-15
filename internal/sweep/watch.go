@@ -15,6 +15,7 @@ type WatchOptions struct {
 	Interval time.Duration // periodic rescan fallback
 	Debounce time.Duration // wait for mbsync to finish writing a burst
 	PostCmd  []string      // run after a sweep that moved local mail
+	Notify   []string      // run with title + body after a sweep that did something
 	Logf     func(format string, args ...any)
 }
 
@@ -66,6 +67,16 @@ func Watch(ctx context.Context, d Deps, o WatchOptions) error {
 		}
 		if err != nil {
 			logf("sweep (%s): %v", why, err)
+		}
+		if b := Brief(rep.Outcomes); len(o.Notify) > 0 && (b != "" || err != nil) {
+			title := "sluice swept " + d.Cfg.TrainingFolder
+			if err != nil {
+				title, b = "sluice sweep failed", strings.TrimSpace(b+"\n"+err.Error())
+			}
+			args := append(append([]string(nil), o.Notify[1:]...), title, b)
+			if out, err := exec.CommandContext(ctx, o.Notify[0], args...).CombinedOutput(); err != nil {
+				logf("notify_cmd %s: %v: %s", strings.Join(o.Notify, " "), err, strings.TrimSpace(string(out)))
+			}
 		}
 		if rep.Changed() && len(o.PostCmd) > 0 {
 			out, err := exec.CommandContext(ctx, o.PostCmd[0], o.PostCmd[1:]...).CombinedOutput()

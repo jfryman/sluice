@@ -45,6 +45,7 @@ Exit code: 0 if nothing failed, 1 otherwise — scriptable before a real apply.
 | sweep service | sweep | warn: `sluice-sweep.service` not installed (LoadState `not-found`) or not active (fix: `make install-service` / logs) |
 | last sweep | sweep | warn: the newest `sweep.jsonl` outcome is `error` (shows reason) |
 | post-sweep cmd | sweep | warn: `post_sweep_cmd[0]` not on PATH (moves then wait for the sync timer) |
+| notify cmd | sweep | warn: `notify_cmd[0]` not on PATH (no sweep notifications) |
 | sluice on PATH | sweep | warn: `sluice` not found on PATH → `mail-sync` can't call `sluice sweep` (fix: `make install`) |
 | server (online) | real | fail: login/list fails; fail: `sieve_script` missing while **another script is active** (never switched off silently); warn: missing and nothing active (first apply creates it); warn: drift; warn: exists but another is active (REAL dialog asks to confirm the switch); warn: nothing active. The detail ends with the session's stage timings, e.g. `[user 0.00s · pass 0.00s · connect 0.12s · starttls 0.55s · auth 0.30s · list 0.12s · get 0.12s · total 1.2s]` |
 

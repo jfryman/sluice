@@ -30,6 +30,8 @@ type Cleaner struct {
 	LockFile    string
 	JournalPath string
 	LockTimeout time.Duration
+
+	lastBatch string
 }
 
 type Result struct {
@@ -64,6 +66,13 @@ func (c *Cleaner) lock() (func(), error) {
 // Trash moves msgs into the trash folder as one journaled batch.
 func (c *Cleaner) Trash(msgs []index.Message) (Result, error) {
 	res := Result{Batch: time.Now().Format("20060102T150405.000")}
+	// Batch ids have millisecond resolution; back-to-back batches from one
+	// Cleaner (a sweep's drops, then its cleanup) must stay separately undoable.
+	for res.Batch <= c.lastBatch {
+		time.Sleep(time.Millisecond)
+		res.Batch = time.Now().Format("20060102T150405.000")
+	}
+	c.lastBatch = res.Batch
 	unlock, err := c.lock()
 	if err != nil {
 		return res, err

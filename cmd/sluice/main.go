@@ -195,7 +195,7 @@ func sweepCmd(args []string) int {
 		}
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		if err := sweep.Watch(ctx, d, sweep.WatchOptions{Interval: interval, PostCmd: cfg.PostSweepCmd, Logf: logf}); err != nil {
+		if err := sweep.Watch(ctx, d, sweep.WatchOptions{Interval: interval, PostCmd: cfg.PostSweepCmd, Notify: cfg.NotifyCmd, Logf: logf}); err != nil {
 			logf("%v", err)
 			return 1
 		}
