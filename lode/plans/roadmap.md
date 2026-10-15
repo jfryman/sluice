@@ -8,7 +8,8 @@ script; `sluice-sweep.service` runs on the desktop).
 
 ## Next
 - **Server-side trash moves** — [imap-move.md](imap-move.md): stop mbsync re-uploading every trashed
-  message. Start with the read-only capability probe.
+  message. The server probe passed (MOVE + UIDPLUS, far-UID mapping verified); next is
+  `maildir.FarUIDs`.
 
 ## Later
 - SaneBox migration: bulk-propose rules for everything in `+SaneBlackHole`.

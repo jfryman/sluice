@@ -1,6 +1,6 @@
 # Plan: server-side trash moves (IMAP MOVE)
 
-Status: **designed, not built** (decisions agreed 2026-10-14). Related:
+Status: **designed, probe passed, not built** (decisions agreed and server probed 2026-10-14). Related:
 [../mail/maildir-and-mbsync.md](../mail/maildir-and-mbsync.md), [../apply/plan.md](../apply/plan.md),
 [../cleanup/search-and-trash.md](../cleanup/search-and-trash.md), [../sieve/remote.md](../sieve/remote.md),
 [../sweep.md](../sweep.md).
@@ -17,7 +17,7 @@ throughout — blocking the next validate (see the lock-wait behaviour in maildi
 | A. local trash copy | keep syncing `Deleted Messages`: mbsync **downloads** each moved message once | least surprising; dropping trash from sync (no transfer at all, server-only undo) can come later |
 | B. IMAP client | small native client in a new `internal/imap` package, modeled on `sieve/managesieve.go` (TLS dial, LOGIN, CAPABILITY, SELECT, UID MOVE / fallback, LOGOUT) with `timing.Recorder` tracing | the subset is tiny; matches the ManageSieve client, its credentials and its badge steps |
 | C. scope | every **real** trash path: `plan.Apply` (real), sweep cleanup + drops, `:cleanup`'s eventual apply. Sandbox keeps local moves | one code path; the sandbox can't rehearse a server anyway |
-| D. capability | require `MOVE` (RFC 6851) + `UIDPLUS` (COPYUID); else fall back to `UID COPY` + `UID STORE +FLAGS (\Deleted)` + `UID EXPUNGE`; `doctor -online` reports which | Cyrus (KolabNow) should have both; verify before building |
+| D. capability | require `MOVE` (RFC 6851) + `UIDPLUS` (COPYUID); else fall back to `UID COPY` + `UID STORE +FLAGS (\Deleted)` + `UID EXPUNGE`; `doctor -online` reports which | **confirmed**: KolabNow advertises both (see Probe results); the fallback stays for other servers |
 
 ## The key fact: local `U=` is not the server UID
 mbsync's maildir names carry the **near** (local) UID: `…,U=10:2,S`. The server (far) UID comes from
@@ -108,9 +108,26 @@ batch for both so `U` undoes the whole apply.
 - Connection drop: MOVE is atomic per command; re-run is safe (already-moved UIDs are gone from the
   source and are skipped as "not found").
 
+## Probe results (2026-10-14, read-only)
+- Pre-login CAPABILITY is minimal (`IMAP4REV1 LITERAL+ ID ENABLE … AUTH=PLAIN AUTH=LOGIN SASL-IR`);
+  **ask again after LOGIN**: `MOVE UIDPLUS CONDSTORE QRESYNC ESEARCH SPECIAL-USE IDLE COMPRESS=DEFLATE …`.
+  Login works with `user` + `pass_cmd` (`mail-pass`), same as ManageSieve.
+- Server UIDVALIDITY equals mbsync's `FarUidValidity` for `Deleted Messages` (1508512700), `Archive`
+  (1467142788) and `+SaneLater` (1615864900).
+- Mapping verified: 10 random local files (5 Archive, 5 +SaneLater) → near `U=` → far UID via
+  `.mbsyncstate` → `UID FETCH BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]` returned the same Message-ID
+  10/10. Far UIDs differ a lot from near ones (e.g. +SaneLater near 579 → far 266157), so using
+  `U=` directly would hit the wrong messages.
+- No `.mbsyncstate.journal` left behind after a completed sync.
+
+```python
+M.select('"Archive"', readonly=True)   # EXAMINE: read-only
+M.uid("FETCH", far, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")  # PEEK: doesn't set \Seen
+```
+
 ## Build order
-1. **Probe (read-only):** `sluice doctor -online` logs in to IMAP and prints CAPABILITY (MOVE,
-   UIDPLUS) and Deleted Messages' UIDVALIDITY. Decide D for real.
+1. ~~Probe~~ done by hand (above). Still build the same check into `sluice doctor -online` (post-login
+   CAPABILITY, UIDVALIDITY vs `FarUidValidity` per trash/source folder) as part of step 3.
 2. `maildir.FarUIDs` + tests against fixture `.mbsyncstate` files (incl. journal present, validity
    mismatch).
 3. `internal/imap` client + a fake server test (like the ManageSieve tests).
