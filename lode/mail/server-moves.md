@@ -82,9 +82,17 @@ Apply: `server: connect · tls · auth` (via `tracedMover`), then `moving on ser
   Message-ID on the server (`UID FETCH … BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]`, read-only).
 - `FarUIDs` on the real maildir: Archive 85,729/85,729 files mapped, +SaneLater 2,992/2,992;
   Deleted Messages had 742 unsynced files (no pair → would be file-moved).
-- Round trip with 2 `+SaneBlackHole` messages: trash on the server in 1.3s total
+- Trash of 2 `+SaneBlackHole` messages: moved on the server in 1.3s total
   (`connect 0.14s · tls 0.29s · auth 0.13s · select 0.20s · move 0.16s`), COPYUID 394936/394937,
-  Message-IDs confirmed in Deleted Messages and gone from the source.
+  Message-IDs confirmed in Deleted Messages and gone from the source. The following `mail-sync`
+  reported `Near: +2` (downloaded the trash copies) and removed the local originals (12 → 10 files).
+- Undo of that batch: both moved back on the server in 1.3s (`UID MOVE` from Deleted Messages,
+  checked against `dstValid`), found in `+SaneBlackHole` by Message-ID (new UIDs 88441/88442) and gone
+  from the trash; the next `mail-sync` (11s) restored both local copies and left none in Deleted
+  Messages. Round trip complete.
+- Lesson: `pass_cmd` (1Password via `mail-pass`, cached 8h in the keyring) can stall a real apply or
+  undo for 60s on an unapproved prompt and then fail — before anything moves, with no undo marker
+  written, so it's simply retryable. Unlocking once (`mail-pass >/dev/null`) fills the cache.
 
 ## Testing
 `imap/remote_test.go` (MOVE and COPY fallback, stale validity, no-UIDPLUS refusal, probe, bad login,
