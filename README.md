@@ -152,7 +152,7 @@ Press `?` in the TUI for the full list for the screen you're on.
 | Plan | `dd` drop an item · `enter` show its messages · `D` discard the whole plan |
 | Everywhere | `A` apply · `u`/`ctrl+r` undo/redo plan changes · `U` undo the last applied trash batch · `:` command line · `R` rescan · `q`/`ZZ` quit |
 
-**Search query language** (Search tab or `:search`): `from:` `domain:` `list:` `folder:` `subject:`
+**Search query language** (Search tab or `:search`): `from:` (address) `name:` (display name; takes the following words, so `name:Health Winners` works) `domain:` `list:` `folder:` `subject:`
 `before:YYYY-MM-DD` `after:YYYY-MM-DD` `older:90d|6m|1y` `unread` `read`, plus bare words.
 Example: `domain:beehiiv.com older:1y unread`.
 

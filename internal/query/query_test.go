@@ -20,6 +20,9 @@ func TestSQL(t *testing.T) {
 		{"domain:Shop.com", `(from_domain = ? OR from_domain LIKE ? ESCAPE '\')`, []any{"shop.com", "%.shop.com"}},
 		{"older:10d", `date < ?`, []any{now.Add(-240 * time.Hour).Unix()}},
 		{"from:a_b", `from_addr LIKE ? ESCAPE '\'`, []any{`%a\_b%`}},
+		{`name:"Health Winners"`, `lower(from_name) LIKE ? ESCAPE '\'`, []any{"%health winners%"}},
+		{"name:Health Winners unread older:10d", `lower(from_name) LIKE ? ESCAPE '\' AND seen = 0 AND date < ?`, []any{"%health winners%", now.Add(-240 * time.Hour).Unix()}},
+		{"promo name:Health Winners", `(lower(subject) LIKE ? ESCAPE '\' OR from_addr LIKE ? ESCAPE '\' OR lower(from_name) LIKE ? ESCAPE '\') AND lower(from_name) LIKE ? ESCAPE '\'`, []any{"%promo%", "%promo%", "%promo%", "%health winners%"}},
 	}
 	for _, tt := range tests {
 		q, err := Parse(tt.in)

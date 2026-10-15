@@ -9,6 +9,7 @@ Space-separated terms, AND-ed. Values may be quoted (`subject:"weekly digest"`).
 | term              | meaning                                       |
 |-------------------|-----------------------------------------------|
 | `from:x`          | from_addr contains x                          |
+| `name:x y`        | from_name contains "x y" (case-insensitive)   |
 | `domain:x`        | from_domain = x or ends with `.x`             |
 | `list:x`          | list_id contains x                            |
 | `folder:x`        | folder = x (exact)                            |
@@ -17,6 +18,12 @@ Space-separated terms, AND-ed. Values may be quoted (`subject:"weekly digest"`).
 | `older:90d`       | date older than N days (`d`, `w`, `m`=30d, `y`=365d) |
 | `unread` / `read` | seen = 0 / 1                                   |
 | bare word         | subject OR from_addr OR from_name contains    |
+
+`name:` is greedy: following bare words join its value (`name:Health Winners unread` = name
+"health winners" AND unread) until the next `field:` term or `read`/`unread`; put free-text words
+before it. `from:` stays address-only on purpose: sender groups search as `from:<addr>`
+(`index.Group.Query`) and Search-tab `X` trash plans must not widen to other senders sharing a
+display name.
 
 `folder:"Deleted Messages"` is always excluded from trash operations.
 

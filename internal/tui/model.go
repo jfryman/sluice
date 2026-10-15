@@ -152,7 +152,7 @@ func New(d Deps) *Model {
 	c.Prompt = ":"
 	q := textinput.New()
 	q.Prompt = "query: "
-	q.Placeholder = `list:foo older:1y unread   (from: domain: list: folder: subject: before: after: older: read unread)`
+	q.Placeholder = `list:foo older:1y unread   (from: name: domain: list: folder: subject: before: after: older: read unread)`
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
 	m := &Model{d: d, kind: index.KindList, marked: map[string]bool{}, findIn: f, cmdInput: c, qinput: q, spin: sp, plan: &plan.Plan{}}

@@ -29,9 +29,12 @@ func Parse(s string) (Query, error) {
 	for _, t := range toks {
 		field, val, ok := strings.Cut(t, ":")
 		if !ok {
-			switch strings.ToLower(t) {
-			case "unread", "read":
-				q.Terms = append(q.Terms, Term{Field: strings.ToLower(t)})
+			switch lt := strings.ToLower(t); {
+			case lt == "unread" || lt == "read":
+				q.Terms = append(q.Terms, Term{Field: lt})
+			case len(q.Terms) > 0 && q.Terms[len(q.Terms)-1].Field == "name":
+				// Display names have spaces: name:Health Winners is one term.
+				q.Terms[len(q.Terms)-1].Value += " " + t
 			default:
 				q.Terms = append(q.Terms, Term{Value: t})
 			}
@@ -39,7 +42,7 @@ func Parse(s string) (Query, error) {
 		}
 		field = strings.ToLower(field)
 		switch field {
-		case "from", "domain", "list", "folder", "subject", "before", "after", "older":
+		case "from", "name", "domain", "list", "folder", "subject", "before", "after", "older":
 		default:
 			return q, fmt.Errorf("unknown field %q", field)
 		}
@@ -98,6 +101,9 @@ func (q Query) SQL() (string, []any, error) {
 			args = append(args, l, l, l)
 		case "from":
 			parts = append(parts, `from_addr LIKE ? ESCAPE '\'`)
+			args = append(args, like(t.Value))
+		case "name":
+			parts = append(parts, `lower(from_name) LIKE ? ESCAPE '\'`)
 			args = append(args, like(t.Value))
 		case "list":
 			parts = append(parts, `list_id LIKE ? ESCAPE '\'`)
