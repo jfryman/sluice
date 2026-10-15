@@ -67,7 +67,12 @@ sequenceDiagram
 
 ## Lessons / caveats
 - mbsync propagates moves as upload+delete, not IMAP MOVE: trashing tens of thousands of
-  archive messages re-uploads their full bodies. Expect a long first sync after a big cleanup.
+  archive messages re-uploads their full bodies — why real trash moves happen on the server
+  ([server-moves.md](server-moves.md)).
+- `.mbsyncrc` has no `Remove` setting, so deleting a folder on the server makes every sync fail with
+  `far side box <X> cannot be opened anymore` until the local maildir goes too. Fix: move it out of
+  `mail_root` under the lock (`flock $XDG_RUNTIME_DIR/mbsync.lock mv ~/Mail/kolab/X …`) — done for
+  `Newsletters` on 2026-10-15 (55 messages kept in `~/Mail/kolab-removed-Newsletters-20261015`).
 - Many messages lack List-Id (~28% of Archive has one), so the TUI defaults to list grouping but
   domain grouping surfaces the biggest spam senders (e.g. `mail.beehiiv.com`, 1.2k msgs / 90d).
 - KolabNow's spam filter prefixes subjects with `***SPAM***`; searchable via `subject:***SPAM***`.
