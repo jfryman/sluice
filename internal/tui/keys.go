@@ -67,6 +67,7 @@ const (
 	scGlobal scope = iota
 	scList
 	scCandidates
+	scSanebox
 	scRules
 	scSearch
 	scPlan
@@ -74,7 +75,7 @@ const (
 )
 
 func (s scope) String() string {
-	return [...]string{"global", "lists", "candidates", "rules", "search", "plan", "dialog"}[s]
+	return [...]string{"global", "lists", "candidates", "sanebox", "rules", "search", "plan", "dialog"}[s]
 }
 
 type binding struct {
@@ -110,6 +111,8 @@ func (m *Model) scopes() []scope {
 	switch m.tab {
 	case tabCandidates:
 		tabScope = scCandidates
+	case tabSanebox:
+		tabScope = scSanebox
 	case tabRules:
 		tabScope = scRules
 	case tabSearch:
@@ -170,6 +173,8 @@ func (m *Model) cur() (*listView, int, int) {
 	switch m.tab {
 	case tabCandidates:
 		return &m.lc, len(m.view), m.listHeight()
+	case tabSanebox:
+		return &m.lb, len(m.sbView), m.listHeight()
 	case tabRules:
 		return &m.lr, len(m.desired()), m.listHeight()
 	case tabSearch:
@@ -220,8 +225,8 @@ func (m *Model) switchTab(t tab) {
 
 func (m *Model) rowText(i int) string {
 	switch m.tab {
-	case tabCandidates:
-		g := m.view[i]
+	case tabCandidates, tabSanebox:
+		g := m.groupList().view[i]
 		return g.Value + " " + g.Name + " " + g.Subject
 	case tabRules:
 		return m.desired()[i].Describe()
@@ -349,8 +354,7 @@ func init() {
 		return nil
 	})
 	bind(scList, "esc", false, "leave visual / clear marks", func(m *Model, c int) tea.Cmd {
-		m.visual = false
-		m.marked = map[string]bool{}
+		m.exitSelection()
 		return nil
 	})
 

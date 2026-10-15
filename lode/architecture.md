@@ -58,6 +58,7 @@ training_folder = "+Sluice"                         # drop-to-block folder (see 
 sent_folders    = ["Sent Messages", "Sent Items"]   # recipients here are never auto-blocked
 sweep_interval  = "5m"                              # watch-mode rescan fallback
 post_sweep_cmd  = ["mail-sync"]                     # after a sweep moved mail; [] waits for the timer; never run in -sandbox
+sanebox_folders = []                                # SaneBox tab folders in order; [] = every "+Sane…" folder with mail
 sweep_cleanup   = "apply"                           # existing matches: "apply" (trash now) | "queue" (plan item); validated at load
 notify_cmd      = ["notify-send", "-a", "sluice"]   # watch mode: + title + body after a sweep with outcomes; [] off
 ```

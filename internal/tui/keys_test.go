@@ -111,9 +111,9 @@ func TestMotions(t *testing.T) {
 
 func TestPrefixAndTabs(t *testing.T) {
 	m := testModel(t, 3)
-	press(m, "3", "g", "t")
+	press(m, "4", "g", "t")
 	if m.tab != tabSearch {
-		t.Fatalf("3gt: tab=%d", m.tab)
+		t.Fatalf("4gt: tab=%d", m.tab)
 	}
 	press(m, "l")
 	if m.tab != tabPlan {
@@ -124,8 +124,12 @@ func TestPrefixAndTabs(t *testing.T) {
 		t.Fatalf("hh: tab=%d", m.tab)
 	}
 	press(m, "g", "T")
-	if m.tab != tabCandidates {
+	if m.tab != tabSanebox {
 		t.Fatalf("gT: tab=%d", m.tab)
+	}
+	press(m, "g", "T")
+	if m.tab != tabCandidates {
+		t.Fatalf("gTgT: tab=%d", m.tab)
 	}
 	press(m, "g")
 	if m.keys.prefix != "g" || m.keys.show() != "g" {
@@ -153,7 +157,7 @@ func TestVisualAndPlanUndo(t *testing.T) {
 	}
 
 	// Plan tab: 2dd drops two items; u restores; ctrl+r redoes.
-	press(m, "4", "g", "t", "2", "d", "d")
+	press(m, "5", "g", "t", "2", "d", "d")
 	if len(m.plan.Rules) != 1 {
 		t.Fatalf("2dd: rules = %d", len(m.plan.Rules))
 	}
@@ -352,5 +356,61 @@ func TestSearchRules(t *testing.T) {
 	m.Update(searchRulesMsg{query: "older:1y", rules: many})
 	if len(m.dialog.actions) != 0 || !strings.Contains(m.dialog.lines[0], "limit") {
 		t.Errorf("limit: %q", m.dialog.lines)
+	}
+}
+
+func TestSaneboxTab(t *testing.T) {
+	m := testModel(t, 3) // Candidates rows d00–d02
+	m.sbFolders = []index.FolderCount{{Folder: "+SaneLater", Count: 5}, {Folder: "+SaneNews", Count: 2}}
+	m.sbFolder = "+SaneLater"
+	m.sbGroups = []index.Group{
+		{Kind: index.KindSender, Value: "a@spam.example", Total: 3},
+		{Kind: index.KindList, Value: "deals.example", Total: 2},
+	}
+	m.applyFilter()
+	press(m, "2", "g", "t")
+	if m.tab != tabSanebox || len(m.sbView) != 2 {
+		t.Fatalf("tab=%d view=%d", m.tab, len(m.sbView))
+	}
+	// Marks are per list: SaneBox marks don't leak into Candidates.
+	press(m, "space", "space")
+	if ts := m.targets(0); len(ts) != 2 || ts[1].Kind != index.KindList {
+		t.Fatalf("targets = %+v", ts)
+	}
+	if len(m.marked) != 0 {
+		t.Fatalf("candidates marks = %v", m.marked)
+	}
+	// Rules staged from SaneBox keep each row's kind.
+	if err := m.stageRules(m.targets(0), sieve.ActionTrash, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.plan.Rules) != 2 || m.plan.Rules[1].Rule.Kind != sieve.KindList || len(m.sbMarked) != 0 {
+		t.Fatalf("plan = %+v marks = %v", m.plan.Rules, m.sbMarked)
+	}
+	press(m, "z", "h")
+	if len(m.sbView) != 0 {
+		t.Fatalf("zh should hide ruled senders: %+v", m.sbView)
+	}
+	// ] moves to the next folder (and wraps), resetting the cursor.
+	m.d.Index = nil
+	m.switchSanebox(1)
+	if m.sbFolder != "+SaneNews" {
+		t.Fatalf("]: folder %q", m.sbFolder)
+	}
+	m.switchSanebox(1)
+	if m.sbFolder != "+SaneLater" {
+		t.Fatalf("] wrap: folder %q", m.sbFolder)
+	}
+}
+
+func TestSaneboxFolders(t *testing.T) {
+	all := []index.FolderCount{{Folder: "Archive", Count: 9}, {Folder: "+SaneLater", Count: 5}, {Folder: "+SaneTomorrow"}, {Folder: "+SaneNews", Count: 2}}
+	got := saneboxFolders(all, nil)
+	if len(got) != 2 || got[0].Folder != "+SaneLater" || got[1].Folder != "+SaneNews" {
+		t.Errorf("auto: %+v", got)
+	}
+	got = saneboxFolders(all, []string{"+SaneNews", "+SaneTomorrow", "+SaneMissing"})
+	if len(got) != 3 || got[0].Count != 2 || got[2].Folder != "+SaneMissing" {
+		t.Errorf("configured: %+v", got)
 	}
 }

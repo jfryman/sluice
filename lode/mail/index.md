@@ -55,6 +55,16 @@ delivery-time trash target; recent volume dominates so noisy senders rise. Group
 a managed rule stay visible (tagged) and can be hidden in the TUI (`h`).
 Black-hole / news folder names come from config (`blackhole_folders`, `news_folders`).
 
+`index.FolderGroups(folder)` groups **one folder** the way rules are derived (sweep, Search `t`):
+`list` by `list_id` when set, else `sender` by `from_addr`; Total/Unread/Last count that folder only,
+largest first. `index.Folders()` lists every folder with count + unread. Both feed the SaneBox tab.
+
+```sql
+SELECT CASE WHEN coalesce(list_id,'') != '' THEN 'list' ELSE 'sender' END AS k,
+       CASE WHEN coalesce(list_id,'') != '' THEN list_id ELSE from_addr END AS v, ...
+FROM messages WHERE folder = ? GROUP BY k, v ORDER BY count(*) DESC
+```
+
 `index.Matching(kind, values, excludeTrash, limit)` is an exact column match — it is what a
 managed rule would have caught, and drives retro-apply and group detail. `index.Search(query, limit)`
 runs the query language (TUI shows the newest 1000; trash operations fetch all).

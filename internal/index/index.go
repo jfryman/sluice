@@ -532,6 +532,54 @@ func (ix *Index) GroupFolders(kind Kind, value string) ([]FolderCount, error) {
 	return out, rows.Err()
 }
 
+// Folders is every indexed folder with its message and unread counts.
+func (ix *Index) Folders() ([]FolderCount, error) {
+	rows, err := ix.db.Query(`SELECT folder, count(*), sum(seen=0) FROM messages GROUP BY folder ORDER BY 2 DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FolderCount
+	for rows.Next() {
+		var fc FolderCount
+		if err := rows.Scan(&fc.Folder, &fc.Count, &fc.Unread); err != nil {
+			return nil, err
+		}
+		out = append(out, fc)
+	}
+	return out, rows.Err()
+}
+
+// FolderGroups groups one folder's mail the way rules are derived: by
+// List-Id when present, else by From address. Total/Unread/Last count only
+// this folder; largest first.
+func (ix *Index) FolderGroups(folder string) ([]Group, error) {
+	rows, err := ix.db.Query(`
+SELECT CASE WHEN coalesce(list_id, '') != '' THEN 'list' ELSE 'sender' END AS k,
+  CASE WHEN coalesce(list_id, '') != '' THEN list_id ELSE from_addr END AS v,
+  max(date), from_name, subject, count(*), sum(seen = 0)
+FROM messages
+WHERE folder = ? AND (coalesce(list_id, '') != '' OR coalesce(from_addr, '') != '')
+GROUP BY k, v ORDER BY count(*) DESC, max(date) DESC`, folder)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Group
+	for rows.Next() {
+		var g Group
+		var kind string
+		var last int64
+		var name, subject sql.NullString
+		if err := rows.Scan(&kind, &g.Value, &last, &name, &subject, &g.Total, &g.Unread); err != nil {
+			return nil, err
+		}
+		g.Kind, g.Name, g.Subject, g.Last = Kind(kind), name.String, subject.String, time.Unix(last, 0)
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
 type Message struct {
 	Key, Folder, Path  string
 	Date               time.Time

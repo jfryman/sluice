@@ -11,7 +11,7 @@ leave your machine are the Sieve upload and your normal mail sync.
 > archives is secondary and usually a one-off.
 
 ```
- REAL  sluice  1 Candidates  2 Rules  3 Search  4 Plan          plan: 1 rules · 1357 msgs ✓  97037 msgs indexed
+ REAL  sluice  1 Candidates  2 SaneBox  3 Rules  4 Search  5 Plan   plan: 1 rules · 1357 msgs ✓  97037 msgs indexed
 group by domain · sort score · 5150 groups
    score   90d  total  unrd bhole  news trash rule       from_domain              latest subject
     1437  1241   1357   91%     0     0     0 trash*     mail.beehiiv.com         The 30-Year Hit a 2004 High…
@@ -130,7 +130,7 @@ sluice                # open the TUI on your real mail (still plan-first)
 1. On **Candidates**, press `gd` to group by sender domain. The noisiest senders you ignore are at the top.
 2. Press `t` on a row to plan a trash rule. sluice then offers to plan trashing the messages you
    already have from that sender (`y`).
-3. Check the **Plan** tab (`l` until you reach it, or `4gt`).
+3. Check the **Plan** tab (`l` until you reach it, or `5gt`).
 4. Press `A`, then `s`: sluice makes a fresh sandbox copy, applies the plan there and shows a report.
    Run `sluice -sandbox` if you want to browse the result.
 5. Before your first real apply, run `sluice doctor -online`. Then press `A`, then `r`, then `y`
@@ -147,6 +147,7 @@ Press `?` in the TUI for the full list for the screen you're on.
 | Find | `/` then type, `n`/`N` for next/previous |
 | Select | `V` to select a range of rows, `space` to mark one row, `esc` to clear |
 | Candidates | `t` trash rule · `f` file into folder · `r` mark-read rule · `x` trash existing mail · `enter` details · `gl`/`gd`/`gs` group by list/domain/sender · `s`/`S` sort · `zh` hide groups that already have rules |
+| SaneBox | browse SaneBox's folders (Later, News, BlackHole, …) grouped by list or sender · `[`/`]` switch folder · `enter` the sender's messages there · `t`/`f`/`r`/`x`, `space`, `zh` as on Candidates |
 | Rules | `dd` remove · `x` trash existing mail that matches |
 | Search | `/` edit the query · `t` block the matches' senders (rules + trash) · `X` trash all matches only |
 | Plan | `dd` drop an item · `enter` show its messages · `D` discard the whole plan |
@@ -205,6 +206,7 @@ training_folder   = "+Sluice"                                   # drop-to-block 
 sent_folders      = ["Sent Messages", "Sent Items"]             # people you've written to are never auto-blocked
 sweep_interval    = "5m"                                        # how often the service rechecks, besides reacting to new mail
 post_sweep_cmd    = ["mail-sync"]                               # sync right after a sweep moves mail ([] = wait for the timer)
+sanebox_folders   = []                                          # SaneBox tab folders in order ([] = every "+Sane…" folder with mail)
 sweep_cleanup     = "apply"                                     # "apply": trash existing matches right away; "queue": add a plan item
 notify_cmd        = ["notify-send", "-a", "sluice"]             # gets a title and body after each sweep that did something ([] = off)
 ```

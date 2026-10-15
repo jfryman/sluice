@@ -47,6 +47,7 @@ type tab int
 
 const (
 	tabCandidates tab = iota
+	tabSanebox
 	tabRules
 	tabSearch
 	tabPlan
@@ -90,10 +91,10 @@ type Model struct {
 	ov  overlay
 
 	// Vim state: per-list viewports, pending count/prefix, visual mode.
-	lc, lr, ls, lp listView // candidates, rules, search, plan
-	keys           keyState
-	visual         bool
-	vanchor        int
+	lc, lb, lr, ls, lp listView // candidates, sanebox, rules, search, plan
+	keys               keyState
+	visual             bool
+	vanchor            int
 
 	// "/" search within the current list.
 	findOn    bool
@@ -115,6 +116,13 @@ type Model struct {
 	marked     map[string]bool
 	filterText string
 	hideRule   bool
+
+	// SaneBox: one SaneBox folder at a time, grouped by list else sender.
+	// Shares the Candidates actions through groupList; filter/hide too.
+	sbFolders        []index.FolderCount
+	sbFolder         string
+	sbGroups, sbView []index.Group
+	sbMarked         map[string]bool
 
 	// Rules: base is this environment's sieve file as on disk.
 	base    *sieve.Script
@@ -155,7 +163,7 @@ func New(d Deps) *Model {
 	q.Placeholder = `list:foo older:1y unread   (from: name: domain: list: folder: subject: before: after: older: read unread)`
 	sp := spinner.New()
 	sp.Spinner = spinner.MiniDot
-	m := &Model{d: d, kind: index.KindList, marked: map[string]bool{}, findIn: f, cmdInput: c, qinput: q, spin: sp, plan: &plan.Plan{}}
+	m := &Model{d: d, kind: index.KindList, marked: map[string]bool{}, sbMarked: map[string]bool{}, findIn: f, cmdInput: c, qinput: q, spin: sp, plan: &plan.Plan{}}
 	m.loadScript()
 	m.reloadPlan()
 	if st, err := os.Stat(d.Config.SweepLog); err == nil {
@@ -421,11 +429,146 @@ func waitChan(ch chan tea.Msg) tea.Cmd {
 	}
 }
 
+// loadGroups reloads the Candidates groups and the SaneBox tab.
 func (m *Model) loadGroups() tea.Cmd {
 	ix, kind := m.d.Index, m.kind
-	return func() tea.Msg {
+	return tea.Batch(func() tea.Msg {
 		gs, err := ix.Groups(kind, time.Now())
 		return groupsMsg{kind, gs, err}
+	}, m.loadSanebox())
+}
+
+type saneboxMsg struct {
+	req     string // folder requested ("" = first); stale when it isn't m.sbFolder
+	folder  string
+	folders []index.FolderCount
+	groups  []index.Group
+	err     error
+}
+
+// loadSanebox loads the SaneBox folder list and the current folder's groups.
+func (m *Model) loadSanebox() tea.Cmd {
+	ix, want, req := m.d.Index, m.d.Config.SaneboxFolders, m.sbFolder
+	return func() tea.Msg {
+		all, err := ix.Folders()
+		if err != nil {
+			return saneboxMsg{req: req, err: err}
+		}
+		msg := saneboxMsg{req: req, folders: saneboxFolders(all, want)}
+		for _, f := range msg.folders {
+			if f.Folder == req || msg.folder == "" {
+				msg.folder = f.Folder
+			}
+		}
+		if msg.folder != "" {
+			msg.groups, msg.err = ix.FolderGroups(msg.folder)
+		}
+		return msg
+	}
+}
+
+// saneboxFolders picks the configured folders (in order, even if empty), or
+// every "+Sane…" folder holding mail.
+func saneboxFolders(all []index.FolderCount, want []string) []index.FolderCount {
+	var out []index.FolderCount
+	if len(want) > 0 {
+		have := map[string]index.FolderCount{}
+		for _, f := range all {
+			have[f.Folder] = f
+		}
+		for _, w := range want {
+			fc, ok := have[w]
+			if !ok {
+				fc = index.FolderCount{Folder: w}
+			}
+			out = append(out, fc)
+		}
+		return out
+	}
+	for _, f := range all {
+		if strings.HasPrefix(f.Folder, "+Sane") && f.Count > 0 {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// switchSanebox moves n folders along the SaneBox folder list (wrapping).
+func (m *Model) switchSanebox(n int) tea.Cmd {
+	if len(m.sbFolders) == 0 {
+		return nil
+	}
+	i := 0
+	for j, f := range m.sbFolders {
+		if f.Folder == m.sbFolder {
+			i = j
+		}
+	}
+	k := len(m.sbFolders)
+	m.sbFolder = m.sbFolders[((i+n)%k+k)%k].Folder
+	m.sbMarked, m.visual, m.lb = map[string]bool{}, false, listView{}
+	return m.loadSanebox()
+}
+
+// groupList is the active grouped list: Candidates or SaneBox rows, all
+// groups (marks may be on hidden rows), viewport and marks.
+type groupList struct {
+	view, all []index.Group
+	lv        *listView
+	marked    map[string]bool
+}
+
+func (m *Model) groupList() groupList {
+	if m.tab == tabSanebox {
+		return groupList{m.sbView, m.sbGroups, &m.lb, m.sbMarked}
+	}
+	return groupList{m.view, m.groups, &m.lc, m.marked}
+}
+
+// loadFolderMessages lists one SaneBox group's messages in folder, with a
+// summary of where else that sender's mail is.
+func (m *Model) loadFolderMessages(g index.Group, folder string) tea.Cmd {
+	ix := m.d.Index
+	rule := "no rule"
+	if r, ok := m.ruleFor(g); ok {
+		rule = "rule: " + r.Describe()
+		if m.pending(r) {
+			rule += " (planned)"
+		}
+	}
+	return func() tea.Msg {
+		ms, err := ix.Matching(g.Kind, []string{g.Value}, false, 0)
+		if err != nil {
+			return detailMsg{err: err}
+		}
+		var rows []string
+		elsewhere := map[string]int{}
+		for _, x := range ms {
+			if x.Folder != folder {
+				elsewhere[x.Folder]++
+				continue
+			}
+			seen := sWarn.Render("●")
+			if x.Seen {
+				seen = " "
+			}
+			rows = append(rows, fmt.Sprintf("  %s %s  %-28.28s  %s", x.Date.Format("2006-01-02"), seen, x.FromAddr, x.Subject))
+		}
+		var other []string
+		for f, n := range elsewhere {
+			other = append(other, fmt.Sprintf("%s %d", f, n))
+		}
+		sort.Strings(other)
+		where := "nowhere else"
+		if len(other) > 0 {
+			where = "elsewhere: " + strings.Join(other, ", ")
+		}
+		lines := []string{
+			fmt.Sprintf("%s   %s", g.Value, g.Name),
+			fmt.Sprintf("%d in %s (%d unread) · %s · %s", g.Total, folder, g.Unread, where, rule),
+			"",
+		}
+		return detailMsg{title: folder + ": " + string(g.Kind), lines: append(lines, rows...), group: g}
 	}
 }
 
@@ -706,16 +849,17 @@ func (m *Model) applyTo(t plan.Target, refresh func() error) tea.Cmd {
 // targets is the visual range, else the marked groups, else count rows
 // from the cursor.
 func (m *Model) targets(count int) []index.Group {
-	if len(m.view) == 0 {
+	gl := m.groupList()
+	if len(gl.view) == 0 {
 		return nil
 	}
-	if m.visual || len(m.marked) == 0 {
+	if m.visual || len(gl.marked) == 0 {
 		lo, hi := m.selection(count)
-		return append([]index.Group(nil), m.view[lo:hi+1]...)
+		return append([]index.Group(nil), gl.view[lo:hi+1]...)
 	}
 	var out []index.Group
-	for _, g := range m.groups {
-		if m.marked[g.Value] {
+	for _, g := range gl.all {
+		if gl.marked[g.Value] {
 			out = append(out, g)
 		}
 	}
@@ -724,7 +868,7 @@ func (m *Model) targets(count int) []index.Group {
 
 func (m *Model) exitSelection() {
 	m.visual = false
-	m.marked = map[string]bool{}
+	m.marked, m.sbMarked = map[string]bool{}, map[string]bool{}
 }
 
 func (m *Model) setKind(k index.Kind) tea.Cmd {
@@ -839,7 +983,7 @@ func (m *Model) stageRules(targets []index.Group, action sieve.Action, folder st
 		}
 		rules = append(rules, r)
 	}
-	m.marked = map[string]bool{}
+	m.marked, m.sbMarked = map[string]bool{}, map[string]bool{}
 	return m.mutate(func(p *plan.Plan) error {
 		for _, r := range rules {
 			p.SetRule("add", r)
@@ -848,21 +992,27 @@ func (m *Model) stageRules(targets []index.Group, action sieve.Action, folder st
 	})
 }
 
+// applyFilter rebuilds the Candidates and SaneBox rows from :filter and zh.
 func (m *Model) applyFilter() {
 	f := strings.ToLower(strings.TrimSpace(m.filterText))
-	m.view = m.view[:0]
-	for _, g := range m.groups {
-		if f != "" && !strings.Contains(g.Value, f) && !strings.Contains(strings.ToLower(g.Name), f) {
-			continue
-		}
-		if m.hideRule {
-			if _, ok := m.ruleFor(g); ok {
+	keep := func(all []index.Group) []index.Group {
+		var out []index.Group
+		for _, g := range all {
+			if f != "" && !strings.Contains(g.Value, f) && !strings.Contains(strings.ToLower(g.Name), f) {
 				continue
 			}
+			if m.hideRule {
+				if _, ok := m.ruleFor(g); ok {
+					continue
+				}
+			}
+			out = append(out, g)
 		}
-		m.view = append(m.view, g)
+		return out
 	}
+	m.view, m.sbView = keep(m.groups), keep(m.sbGroups)
 	m.lc.fix(len(m.view), m.listHeight())
+	m.lb.fix(len(m.sbView), m.listHeight())
 }
 
 func (m *Model) openDialog(title string, lines []string, actions ...action) {

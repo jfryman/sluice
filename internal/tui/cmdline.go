@@ -92,7 +92,7 @@ func init() {
 		{"undo", nil, "undo plan edit", func(m *Model, a string) tea.Cmd { m.planUndo(1); return nil }},
 		{"redo", nil, "redo plan edit", func(m *Model, a string) tea.Cmd { m.planRedo(1); return nil }},
 		{"rescan", nil, "rescan index, reload sieve + plan", func(m *Model, a string) tea.Cmd { return m.rescan() }},
-		{"tab", []string{"1", "2", "3", "4"}, "go to tab N", func(m *Model, a string) tea.Cmd {
+		{"tab", []string{"1", "2", "3", "4", "5"}, "go to tab N", func(m *Model, a string) tea.Cmd {
 			n, err := strconv.Atoi(a)
 			if err != nil || n < 1 || n > int(numTabs) {
 				m.setErr(fmt.Errorf("usage: :tab 1-%d", numTabs))

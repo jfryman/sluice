@@ -13,7 +13,9 @@ Related: [../apply/plan.md](../apply/plan.md), [../apply/sandbox.md](../apply/sa
 ```mermaid
 stateDiagram-v2
   [*] --> Candidates
-  Candidates --> Rules: l / gt / 2gt
+  Candidates --> SaneBox: l / gt / 2gt
+  SaneBox --> Rules: l
+  SaneBox --> Dialog: enter (folder messages) / t / x
   Rules --> Search: l
   Search --> Plan: l
   Plan --> Candidates: l (wraps)
@@ -30,6 +32,15 @@ Summary: `h`/`l` tabs · `j`/`k` `gg`/`G` `ctrl+d`/`ctrl+u` `H`/`M`/`L` `zz` mot
 plan undo/redo · `A` apply · `U` undo applied batch · `:` commands · `?` help.
 
 Targets for `t`/`f`/`r`/`x`: visual range, else marked rows, else `{count}` rows from the cursor.
+
+**SaneBox tab** (tab 2): browse SaneBox's pre-filtering one folder at a time. Folders are
+`sanebox_folders` (in order) or, when unset, every indexed `+Sane…` folder with mail (largest first);
+chips show counts, `[`/`]` switch (wrapping). Rows are `index.FolderGroups` (list else sender, counts
+for that folder only). It reuses the Candidates actions via `groupList()` — `{view, all, lv, marked}`
+for whichever of the two tabs is active — so `targets()`, `space`, `t`/`f`/`r`/`x`, `V`, `zh` and
+`:filter` work on both; marks are per tab (`marked` / `sbMarked`). `enter` lists the group's messages
+in that folder (● unread) plus where else its mail is. `loadGroups()` also reloads SaneBox
+(`saneboxMsg`, dropped as stale when `req` ≠ the current folder).
 Group detail and trash-item listings are dialogs (scrollable; detail offers `s` to search the group).
 
 Apply dialog (real mode): full plan summary + collapsed sieve diff + validation status; `s` clones a
@@ -58,9 +69,10 @@ type Deps struct {
 }
 type Model struct {
   tab tab; ov overlay         // ovNone | ovDialog | ovPicker
-  lc, lr, ls, lp listView     // per-list cursor + scroll offset
+  lc, lb, lr, ls, lp listView // per-list cursor + scroll offset (lb = SaneBox)
   keys keyState; visual bool  // pending count/prefix; visual anchor
   groups, view []index.Group; marked map[string]bool
+  sbFolders []index.FolderCount; sbFolder string; sbGroups, sbView []index.Group; sbMarked map[string]bool
   undoStack, redoStack []*plan.Plan
   base *sieve.Script          // this env's sieve file on disk
   plan *plan.Plan             // reloaded from disk on tab switch / mutation

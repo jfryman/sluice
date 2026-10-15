@@ -36,6 +36,9 @@ type Config struct {
 	SweepInterval string `toml:"sweep_interval"`
 	// PostSweepCmd runs after a sweep moved local mail (e.g. ["mail-sync"]).
 	PostSweepCmd []string `toml:"post_sweep_cmd"`
+	// SaneboxFolders are the SaneBox tab's folders, in order; empty means
+	// every indexed folder starting with "+Sane" that holds mail.
+	SaneboxFolders []string `toml:"sanebox_folders"`
 	// SweepCleanup is what a sweep does with existing mail matching a new
 	// rule: "apply" (move it to trash now, journaled) or "queue" (plan item).
 	SweepCleanup string `toml:"sweep_cleanup"`

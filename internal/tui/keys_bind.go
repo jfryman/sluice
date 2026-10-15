@@ -9,57 +9,71 @@ import (
 )
 
 func bindCandidates() {
-	bind(scCandidates, "space", false, "toggle mark", func(m *Model, c int) tea.Cmd {
-		for i := 0; i < or1(c) && m.lc.cur < len(m.view); i++ {
-			v := m.view[m.lc.cur].Value
-			if m.marked[v] {
-				delete(m.marked, v)
-			} else {
-				m.marked[v] = true
+	// Shared by Candidates and SaneBox: both are grouped lists (groupList).
+	for _, sc := range []scope{scCandidates, scSanebox} {
+		bind(sc, "space", false, "toggle mark", func(m *Model, c int) tea.Cmd {
+			gl := m.groupList()
+			for i := 0; i < or1(c) && gl.lv.cur < len(gl.view); i++ {
+				v := gl.view[gl.lv.cur].Value
+				if gl.marked[v] {
+					delete(gl.marked, v)
+				} else {
+					gl.marked[v] = true
+				}
+				if gl.lv.cur == len(gl.view)-1 {
+					break
+				}
+				gl.lv.cur++
 			}
-			if m.lc.cur == len(m.view)-1 {
-				break
+			gl.lv.fix(len(gl.view), m.listHeight())
+			return nil
+		})
+		bind(sc, "zh", false, "toggle hiding groups that have rules", func(m *Model, c int) tea.Cmd {
+			m.hideRule = !m.hideRule
+			m.applyFilter()
+			return nil
+		})
+		bind(sc, "t", true, "plan trash rule (+ trash of existing mail)", func(m *Model, c int) tea.Cmd { return m.planRule(sieve.ActionTrash, c) })
+		bind(sc, "r", true, "plan mark-read rule", func(m *Model, c int) tea.Cmd { return m.planRule(sieve.ActionRead, c) })
+		bind(sc, "f", true, "plan file-into rule (folder picker)", func(m *Model, c int) tea.Cmd {
+			if ts := m.targets(c); len(ts) > 0 {
+				m.exitSelection()
+				if err := m.openPicker(ts); err != nil {
+					m.setErr(err)
+				}
 			}
-			m.lc.cur++
-		}
-		m.lc.fix(len(m.view), m.listHeight())
-		return nil
-	})
+			return nil
+		})
+		bind(sc, "x", true, "plan trash of existing mail", func(m *Model, c int) tea.Cmd {
+			ts := m.targets(c)
+			if len(ts) == 0 {
+				return nil
+			}
+			m.exitSelection()
+			return tea.Batch(m.startBusy("finding existing mail"), m.retro(ts))
+		})
+	}
+
 	for keys, kind := range map[string]index.Kind{"gl": index.KindList, "gd": index.KindDomain, "gs": index.KindSender} {
 		kind := kind
 		bind(scCandidates, keys, false, "group by "+string(kind), func(m *Model, c int) tea.Cmd { return m.setKind(kind) })
 	}
 	bind(scCandidates, "s", false, "next sort", func(m *Model, c int) tea.Cmd { m.setSort(m.sortKey.Next()); return nil })
 	bind(scCandidates, "S", false, "previous sort", func(m *Model, c int) tea.Cmd { m.setSort(m.sortKey.Prev()); return nil })
-	bind(scCandidates, "zh", false, "toggle hiding groups that have rules", func(m *Model, c int) tea.Cmd {
-		m.hideRule = !m.hideRule
-		m.applyFilter()
-		return nil
-	})
 	bind(scCandidates, "enter", false, "group detail", func(m *Model, c int) tea.Cmd {
 		if m.lc.cur < len(m.view) {
 			return m.loadDetail(m.view[m.lc.cur])
 		}
 		return nil
 	})
-	bind(scCandidates, "t", true, "plan trash rule (+ trash of existing mail)", func(m *Model, c int) tea.Cmd { return m.planRule(sieve.ActionTrash, c) })
-	bind(scCandidates, "r", true, "plan mark-read rule", func(m *Model, c int) tea.Cmd { return m.planRule(sieve.ActionRead, c) })
-	bind(scCandidates, "f", true, "plan file-into rule (folder picker)", func(m *Model, c int) tea.Cmd {
-		if ts := m.targets(c); len(ts) > 0 {
-			m.exitSelection()
-			if err := m.openPicker(ts); err != nil {
-				m.setErr(err)
-			}
+
+	bind(scSanebox, "]", false, "next SaneBox folder", func(m *Model, c int) tea.Cmd { return m.switchSanebox(or1(c)) })
+	bind(scSanebox, "[", false, "previous SaneBox folder", func(m *Model, c int) tea.Cmd { return m.switchSanebox(-or1(c)) })
+	bind(scSanebox, "enter", false, "messages in this folder", func(m *Model, c int) tea.Cmd {
+		if m.lb.cur < len(m.sbView) {
+			return m.loadFolderMessages(m.sbView[m.lb.cur], m.sbFolder)
 		}
 		return nil
-	})
-	bind(scCandidates, "x", true, "plan trash of existing mail", func(m *Model, c int) tea.Cmd {
-		ts := m.targets(c)
-		if len(ts) == 0 {
-			return nil
-		}
-		m.exitSelection()
-		return tea.Batch(m.startBusy("finding existing mail"), m.retro(ts))
 	})
 }
 
