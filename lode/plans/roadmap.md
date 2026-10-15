@@ -24,6 +24,12 @@ so mbsync no longer re-uploads every trashed message.
 - Collapse Emarsys/Mailchimp-style list ids (`<hash>.<n>.list-id.mcsv.net`) to their provider when
   a sender rotates list ids.
 
+## Decided against
+- **Emptying the trash** (2026-10-15): sluice never deletes mail; everything it does stays undoable
+  with `U`. A design was sketched (server-side `UID STORE \Deleted` + `UID EXPUNGE` of messages in
+  Deleted Messages longer than N days by `SAVEDATE`, as a plan item with a capital-`Y` confirm) and
+  James chose not to build it. Don't re-propose it.
+
 ## Open issues found during discovery
 - `kolab.sieve` files into `Newsletters`, but no such folder exists locally — either the folder is
   missing server-side (rule silently failing) or it's excluded from sync. Needs James to confirm
