@@ -46,6 +46,8 @@ minimally; `ctrl+e`/`ctrl+y` scroll and drag the cursor; `H`/`M`/`L` are relativ
 Notation is vim's: adjacent keys are a sequence (`gg`, `dd`); chords carry a modifier (`ctrl+d`).
 Sequences that cross dialogs are space-separated in user-facing text — `A r y` (apply → real →
 confirm), `A s` (validate in sandbox) — never arrows, which read like chords.
+The dialog scope hides global bindings, so any sequence advertised from an info dialog (the sandbox
+report says "A r y applies to real") needs a dialog-scope binding too; `A` has one.
 
 | scope | keys |
 |-------|------|
@@ -55,7 +57,7 @@ confirm), `A s` (validate in sandbox) — never arrows, which read like chords.
 | rules | `dd` plan removal (`{n}dd`, or visual range) · `x` plan trash of existing |
 | search | `/` `i` `e` edit query · `X` plan trash of all matches |
 | plan | `dd` drop item(s) · `enter` show messages · `D` discard plan |
-| dialog | `j`/`k` · `gg`/`G` · `ctrl+d`/`ctrl+u` · `ctrl+f`/`ctrl+b` scroll · action keys (`y`/`s`/`r`) · `esc`/`q` close |
+| dialog | `j`/`k` · `gg`/`G` · `ctrl+d`/`ctrl+u` · `ctrl+f`/`ctrl+b` scroll · action keys (`y`/`s`/`r`) · `esc`/`q` close · info dialogs (no actions): `enter` close, `A` close + open apply |
 
 Targets for `t`/`f`/`r`/`x`: visual range if active, else marked rows, else the cursor row.
 

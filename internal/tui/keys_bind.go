@@ -208,4 +208,12 @@ func bindDialog() {
 		}
 		return nil
 	})
+	// So the sandbox report's "A r y applies to real" works without closing it first.
+	bind(scDialog, "A", true, "apply plan (info dialogs)", func(m *Model, c int) tea.Cmd {
+		if len(m.dialog.actions) == 0 {
+			m.ov = ovNone
+			m.openApply()
+		}
+		return nil
+	})
 }

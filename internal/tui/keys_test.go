@@ -264,3 +264,30 @@ func TestConfirmRealServerStates(t *testing.T) {
 		t.Errorf("switch warning missing: %q", m.dialog.lines)
 	}
 }
+
+// After a sandbox validation the report dialog says "A r y applies to real";
+// that sequence must work without closing the report first.
+func TestApplyFromReportDialog(t *testing.T) {
+	m := testModel(t, 1)
+	m.d.Env, m.d.Target.Name = "real", "real"
+	if err := m.mutate(func(p *plan.Plan) error {
+		p.AddTrash("x", []plan.Ref{{Key: "k1", Folder: "Archive"}})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	m.openDialog("Applied to sandbox", []string{"report"})
+	press(m, "A")
+	if m.dialog.title != "Apply plan" {
+		t.Fatalf("A from report: dialog %q", m.dialog.title)
+	}
+	press(m, "r")
+	if m.dialog.title != "Apply plan to REAL mail and server?" {
+		t.Fatalf("A r: dialog %q", m.dialog.title)
+	}
+	// A inside an action dialog doesn't replace it.
+	press(m, "A")
+	if m.dialog.title != "Apply plan to REAL mail and server?" || m.ov != ovDialog {
+		t.Fatalf("A in confirm dialog: ov=%v dialog %q", m.ov, m.dialog.title)
+	}
+}
