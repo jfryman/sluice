@@ -11,7 +11,7 @@ arch=('x86_64' 'aarch64')
 url='https://github.com/jfryman/sluice'
 license=('MIT')
 depends=('glibc')
-makedepends=('git' 'go>=2:1.27.1')
+makedepends=('git' 'go>=2:1.27.0')
 optdepends=(
   'isync: mbsync keeps the local maildir sluice reads in sync (mail-sync wrapper)'
   'libnotify: notify-send for sweep notifications (notify_cmd)'

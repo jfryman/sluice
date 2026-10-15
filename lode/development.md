@@ -78,7 +78,7 @@ flowchart LR
   `pre_install`/`pre_upgrade` scan `/root` and `/home/*` for the dev install and **warn** — pacman
   runs scriptlets as root and ignores their exit status, so only `prepare()` can actually refuse
   (it covers `makepkg -si`; a prebuilt package installed with `pacman -U` only gets the warning).
-- Deps: `glibc`; make: `git`, `go>=2:1.27.1`; optional: `isync`, `libnotify`, `keyutils`.
+- Deps: `glibc`; make: `git`, `go>=2:1.27.0`; optional: `isync`, `libnotify`, `keyutils`.
   `license=('MIT')` (repo `LICENSE`), installed to `/usr/share/licenses/sluice-git/LICENSE` as Arch
   requires for MIT.
 - makepkg output under `contrib/arch/` is git-ignored.
@@ -110,6 +110,10 @@ dev box therefore needs `SLUICE_ALLOW_DEV=1`, or build from a copy of the PKGBUI
   before/after a real-mode session with a sandbox apply were identical.
 
 ## Lessons
+- Keep `go.mod`'s `go` line (and the PKGBUILD's `go>=` makedepend) at the **lowest** Go the code
+  needs, not the dev box's toolchain: Arch's `go` sets `GOTOOLCHAIN=local`, so a newer `go` line
+  fails the package build on a machine one patch behind (main box had 1.27.0, `go.mod` said
+  1.27.1; fixed 2026-10-15, verified with `GOTOOLCHAIN=go1.27.0 go test ./...`).
 - zsh (James's shell): `echo =====` fails (`=word` expansion) and an unmatched glob errors
   (`ls foo*`) — quote them in scripted checks.
 - `set -o pipefail` + `ls | head` kills a script with exit 141 (SIGPIPE); use
