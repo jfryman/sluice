@@ -74,8 +74,12 @@ install-service: install
 	systemctl --user enable --now $(UNIT)
 	systemctl --user restart $(UNIT)   # pick up a newly installed binary
 
+# Safe to re-run: skips disabling when the unit isn't installed.
 uninstall-service:
-	-systemctl --user disable --now $(UNIT) 2>/dev/null
+	@if [ -e $(UNIT_DIR)/$(UNIT) ]; then \
+		echo "systemctl --user disable --now $(UNIT)"; \
+		systemctl --user disable --now $(UNIT) || true; \
+	fi
 	rm -f $(UNIT_DIR)/$(UNIT)
 	systemctl --user daemon-reload
 
