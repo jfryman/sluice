@@ -19,6 +19,7 @@ import (
 	"github.com/jfryman/sluice/internal/cleanup"
 	"github.com/jfryman/sluice/internal/config"
 	"github.com/jfryman/sluice/internal/doctor"
+	"github.com/jfryman/sluice/internal/imap"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/maildir"
 	"github.com/jfryman/sluice/internal/plan"
@@ -392,6 +393,37 @@ func traced(pub sieve.Publisher, prefix string, progress func(string)) sieve.Pub
 		return r
 	}
 	return pub
+}
+
+// tracedMover makes an IMAP mover report its session steps as "server: <step>".
+func tracedMover(mv cleanup.Mover, progress func(string)) cleanup.Mover {
+	if r, ok := mv.(imap.Remote); ok {
+		r.Trace = &timing.Recorder{OnStage: func(s string) {
+			if s != "move" && s != "select" { // the mover reports those with counts
+				progress("server: " + s)
+			}
+		}}
+		return r
+	}
+	return mv
+}
+
+type syncMsg struct {
+	busy bool // mbsync was already running
+	err  error
+}
+
+// syncAfterServerMoves runs sync_cmd so server-side moves reach the local
+// maildir now, then rescans.
+func (m *Model) syncAfterServerMoves() tea.Cmd {
+	argv := m.d.Config.SyncCmd
+	if len(argv) == 0 {
+		return nil
+	}
+	return m.runBusy("syncing mail ("+strings.Join(argv, " ")+")", func(func(string)) tea.Msg {
+		busy, err := plan.Sync(argv)
+		return syncMsg{busy, err}
+	})
 }
 
 // busyBadge is the header's "⠋ applying plan to real · moving 3/9 · 0:42".
@@ -830,6 +862,7 @@ func (m *Model) confirmSearchRules(msg searchRulesMsg) {
 func (m *Model) undo() tea.Cmd {
 	c := m.d.Target.Cleaner()
 	return m.runBusy("undoing", func(progress func(string)) tea.Msg {
+		c.Server, c.Stage = tracedMover(c.Server, progress), progress
 		c.Progress = func(done, total int) { progress(fmt.Sprintf("restoring %d/%d messages", done, total)) }
 		res, err := c.Undo()
 		return undoMsg{res: res, err: err}
@@ -872,6 +905,7 @@ func (m *Model) applyTo(label string, t plan.Target, refresh func(progress func(
 	return m.runBusy(label, func(progress func(string)) tea.Msg {
 		t.Progress = progress
 		t.Publisher = traced(t.Publisher, "publishing rules", progress)
+		t.Server = tracedMover(t.Server, progress)
 		if refresh != nil {
 			if err := refresh(progress); err != nil {
 				return applyMsg{target: t.Name, err: fmt.Errorf("refresh sandbox: %w", err)}
@@ -1324,7 +1358,7 @@ type sweepMsg struct {
 
 // runSweep processes the training folder once for this environment.
 func (m *Model) runSweep() tea.Cmd {
-	d := sweep.Deps{Cfg: m.d.Config, Index: m.d.Index, Publisher: m.d.Target.Publisher}
+	d := sweep.Deps{Cfg: m.d.Config, Index: m.d.Index, Publisher: m.d.Target.Publisher, Mover: m.d.Target.Server}
 	return tea.Batch(m.startBusy("sweeping "+m.d.Config.TrainingFolder), func() tea.Msg {
 		rep, err := sweep.Run(d)
 		return sweepMsg{rep, err}

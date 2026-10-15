@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jfryman/sluice/internal/config"
+	"github.com/jfryman/sluice/internal/imap"
 	"github.com/jfryman/sluice/internal/sieve"
 )
 
@@ -46,6 +47,9 @@ func healthy(t *testing.T) env {
 		MbsyncRC:     rc,
 		LookPath:     func(s string) (string, error) { return "/usr/bin/" + s, nil },
 		ServiceState: func() (string, error) { return "active", nil },
+		IMAPProbe: func([]string) (imap.ProbeResult, error) {
+			return imap.ProbeResult{Caps: []string{"MOVE", "UIDPLUS"}, Move: true, Validity: map[string]uint32{"Deleted Messages": 77}}, nil
+		},
 	}}
 }
 
@@ -233,5 +237,40 @@ func TestCapabilitySummary(t *testing.T) {
 	os.MkdirAll(filepath.Join(e.cfg.MailRoot, "+Missing", "cur"), 0o700)
 	if c := find(t, Run(e.cfg, e.opts), "training folder"); c.Status != OK || c.Detail != "+Missing" {
 		t.Errorf("custom folder: %+v", c)
+	}
+}
+
+func TestOnlineIMAP(t *testing.T) {
+	state := func(e env, validity string) {
+		os.WriteFile(filepath.Join(e.cfg.MailRoot, "Deleted Messages", ".mbsyncstate"),
+			[]byte("FarUidValidity "+validity+"\nNearUidValidity 1\n\n1 1 S\n"), 0o600)
+	}
+	cases := []struct {
+		name  string
+		setup func(e *env)
+		want  Status
+		text  string
+	}{
+		{"ok", func(e *env) { state(*e, "77") }, OK, "UID MOVE"},
+		{"stale validity", func(e *env) { state(*e, "76") }, Warn, "UIDVALIDITY"},
+		{"no mbsync state", func(e *env) {}, Warn, "mbsync state"},
+		{"no uidplus", func(e *env) {
+			state(*e, "77")
+			e.opts.IMAPProbe = func([]string) (imap.ProbeResult, error) { return imap.ProbeResult{}, nil }
+		}, Warn, "fall back"},
+		{"login fails", func(e *env) {
+			e.opts.IMAPProbe = func([]string) (imap.ProbeResult, error) { return imap.ProbeResult{}, errors.New("auth failed") }
+		}, Warn, "auth failed"},
+		{"disabled", func(e *env) { e.cfg.ServerMoves = false }, OK, "server_moves = false"},
+	}
+	for _, c := range cases {
+		e := healthy(t)
+		e.opts.Online = true
+		e.opts.RemoteStat = func() (sieve.ServerStatus, error) { return sieve.ServerStatus{Exists: true, Active: "kolab"}, nil }
+		c.setup(&e)
+		got := find(t, Run(e.cfg, e.opts), "imap moves")
+		if got.Status != c.want || !strings.Contains(got.Detail, c.text) {
+			t.Errorf("%s: %s %q", c.name, got.Status.Symbol(), got.Detail)
+		}
 	}
 }

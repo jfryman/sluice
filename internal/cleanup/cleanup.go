@@ -21,7 +21,15 @@ type Entry struct {
 	From  string `json:"from,omitempty"`
 	To    string `json:"to,omitempty"`
 	Undo  string `json:"undo,omitempty"` // marker: this batch was undone
+	// Server moves (Mode "server"): the local file was left for mbsync.
+	Mode     string `json:"mode,omitempty"`
+	FarUID   uint32 `json:"far,omitempty"`      // UID in From before the move
+	DstUID   uint32 `json:"dst,omitempty"`      // UID in To (COPYUID)
+	DstValid uint32 `json:"dstValid,omitempty"` // To's UIDVALIDITY at move time
 }
+
+// ModeServer marks a journal entry moved on the IMAP server.
+const ModeServer = "server"
 
 type Cleaner struct {
 	Index       *index.Index
@@ -34,6 +42,11 @@ type Cleaner struct {
 	Progress func(done, total int)
 	// OnWait, if set, is called about once a second while waiting for mbsync.
 	OnWait func(waited time.Duration)
+	// Server, if set, moves synced messages on the IMAP server instead of
+	// moving local files (real environment only).
+	Server Mover
+	// Stage, if set, gets the server mover's progress text.
+	Stage func(string)
 
 	lastBatch string
 }
@@ -41,6 +54,8 @@ type Cleaner struct {
 type Result struct {
 	Batch       string
 	Moved       int
+	Server      int             // of Moved: moved on the IMAP server (local files follow on the next sync)
+	Notes       []string        // why some messages were moved locally instead
 	Skipped     []string        // human-readable reasons
 	SkippedKeys map[string]bool // keys that were not moved
 }
@@ -91,6 +106,11 @@ func (c *Cleaner) Trash(msgs []index.Message) (Result, error) {
 	// Unbuffered: a line must hit the journal for every file that moved.
 	enc := json.NewEncoder(j)
 	keys := keyCache{root: c.Root}
+	if c.Server != nil {
+		if msgs, err = c.trashOnServer(msgs, &keys, enc, &res); err != nil {
+			return res, err
+		}
+	}
 	tick := c.ticker(len(msgs))
 
 	for i, m := range msgs {
@@ -165,14 +185,22 @@ func (c *Cleaner) Undo() (Result, error) {
 
 	keys := keyCache{root: c.Root}
 	total, done := 0, 0
+	var server []Entry
 	for _, e := range entries {
 		if e.Batch == last {
-			total++
+			if e.Mode == ModeServer {
+				server = append(server, e)
+			} else {
+				total++
+			}
 		}
+	}
+	if err := c.undoOnServer(server, &res); err != nil {
+		return res, fmt.Errorf("server undo: %w", err)
 	}
 	tick := c.ticker(total)
 	for _, e := range entries {
-		if e.Batch != last {
+		if e.Batch != last || e.Mode == ModeServer {
 			continue
 		}
 		tick(done)

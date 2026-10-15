@@ -27,8 +27,10 @@ flowchart TD
 | `internal/maildir` | folder walk, filename parse, header parse, locked move | [mail/maildir-and-mbsync.md](mail/maildir-and-mbsync.md) |
 | `internal/index`   | SQLite cache, scan, groups, search, lookups by key | [mail/index.md](mail/index.md) |
 | `internal/query`   | search language → SQL | [cleanup/search-and-trash.md](cleanup/search-and-trash.md) |
-| `internal/cleanup` | trash batches, journal, undo | [cleanup/search-and-trash.md](cleanup/search-and-trash.md) |
+| `internal/cleanup` | trash batches (server moves via a `Mover`, else file moves), journal, undo | [cleanup/search-and-trash.md](cleanup/search-and-trash.md) |
 | `internal/sieve`   | managed block edit, native ManageSieve client, `Publisher` (server / file) | [sieve/managed-block.md](sieve/managed-block.md), [sieve/remote.md](sieve/remote.md) |
+| `internal/imap`    | minimal IMAP client: UID MOVE + COPYUID, probe; `imaptest` fake server | [mail/server-moves.md](mail/server-moves.md) |
+| `internal/creds`   | user / `user_cmd` / `pass_cmd` resolution shared by ManageSieve and IMAP | [sieve/remote.md](sieve/remote.md) |
 | `internal/plan`    | plan model, persistence, apply to a target | [apply/plan.md](apply/plan.md) |
 | `internal/sandbox` | full reflink clone environment | [apply/sandbox.md](apply/sandbox.md) |
 | `internal/sweep`   | training folder → rules + cleanup (trashed now or queued); watch loop + notify | [sweep.md](sweep.md) |
@@ -50,6 +52,10 @@ sieve_file      = "~/.config/sieve/kolab.sieve"
 sieve_server    = "imap.kolabnow.com"
 sieve_script    = "kolab"
 sieve_port      = 4190
+imap_server     = "imap.kolabnow.com"                # server-side trash moves (implicit TLS)
+imap_port       = 993
+server_moves    = true                              # real trash moves via IMAP UID MOVE; false = local file moves
+sync_cmd        = ["mail-sync"]                     # after a real apply/undo that moved mail on the server; [] waits for the timer
 user            = "james@fryman.io"                 # login (skips user_cmd: no 1Password round trip); "" → user_cmd
 user_cmd        = ["mail-user"]
 pass_cmd        = ["mail-pass"]

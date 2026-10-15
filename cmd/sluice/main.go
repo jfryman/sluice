@@ -18,8 +18,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/jfryman/sluice/internal/cleanup"
 	"github.com/jfryman/sluice/internal/config"
 	"github.com/jfryman/sluice/internal/doctor"
+	"github.com/jfryman/sluice/internal/imap"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sandbox"
@@ -85,8 +87,22 @@ func openIndex(c config.Config) (*index.Index, error) {
 }
 
 func target(name string, c config.Config, pub sieve.Publisher, ix *index.Index) plan.Target {
-	return plan.Target{Name: name, Root: c.MailRoot, TrashFolder: c.TrashFolder, LockFile: c.LockFile,
+	t := plan.Target{Name: name, Root: c.MailRoot, TrashFolder: c.TrashFolder, LockFile: c.LockFile,
 		JournalPath: c.JournalPath, SieveFile: c.SieveFile, Publisher: pub, Index: ix}
+	if name == "real" {
+		t.Server = moverFor(c, nil)
+	}
+	return t
+}
+
+// moverFor is the IMAP server mover for real trash moves, or nil when
+// server_moves is off (local file moves).
+func moverFor(c config.Config, trace *timing.Recorder) cleanup.Mover {
+	if !c.ServerMoves {
+		return nil
+	}
+	return imap.Remote{Server: c.ImapServer, Port: c.ImapPort, User: c.User, UserCmd: c.UserCmd,
+		PassCmd: c.PassCmd, Trace: trace}
 }
 
 func run(o opts) error {
@@ -185,6 +201,9 @@ func sweepCmd(args []string) int {
 	}
 	defer ix.Close()
 	d := sweep.Deps{Cfg: cfg, Index: ix, Publisher: pub, Timing: rec}
+	if !*useSandbox {
+		d.Mover = moverFor(realCfg, rec)
+	}
 	logf("%s", version.Short())
 
 	if *watch {
@@ -320,6 +339,14 @@ func applyHeadless(realCfg config.Config, t plan.Target, yes bool) error {
 	rep, err := plan.Apply(p, t)
 	for _, l := range rep.Lines() {
 		fmt.Println(l)
+	}
+	if rep.Server > 0 {
+		fmt.Println("syncing:", strings.Join(realCfg.SyncCmd, " "))
+		if busy, serr := plan.Sync(realCfg.SyncCmd); serr != nil {
+			fmt.Fprintln(os.Stderr, "sync:", serr)
+		} else if busy {
+			fmt.Println("mbsync is already running; it picks the server moves up")
+		}
 	}
 	if err != nil {
 		return err

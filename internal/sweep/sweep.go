@@ -65,6 +65,11 @@ type Deps struct {
 	// Timing, if set, collects stage durations; the Publisher should record
 	// into the same Recorder (sieve.Remote.Trace) so one line covers a sweep.
 	Timing *timing.Recorder
+	// Mover, if set, moves the cleanup (existing matches) on the IMAP
+	// server. Drops always move locally: they are few, and a server move
+	// would leave them in the training folder until the next sync, where
+	// the next sweep would process them again.
+	Mover cleanup.Mover
 }
 
 // EnsureFolder creates the training maildir if missing; mbsync's
@@ -224,6 +229,7 @@ func Run(d Deps) (rep Report, err error) {
 		}
 		if len(msgs) > 0 {
 			stop = d.Timing.Time("cleanup")
+			c.Server = d.Mover
 			res, err := c.Trash(msgs)
 			stop()
 			rep.Cleaned = res.Moved

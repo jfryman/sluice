@@ -63,14 +63,23 @@ flowchart LR
   M --> J[append JSONL to journal]
   J --> X[update index rows]
 ```
+With `Cleaner.Server` set (real environment, `server_moves`), synced messages are moved on the IMAP
+server first and their local files are left for mbsync; only the rest are file-moved — see
+[../mail/server-moves.md](../mail/server-moves.md). Both kinds share one batch id.
+
 Journal: `$XDG_STATE_HOME/sluice/journal.jsonl`, one **unbuffered** line per move, written right
-after the file moves (so a crash never leaves an unjournaled move):
-`{"batch":"20260924T180102.123","key":"...","from":"Archive","to":"Deleted Messages"}`.
+after the move (so a crash never leaves an unjournaled move):
+`{"batch":"20260924T180102.123","key":"...","from":"Archive","to":"Deleted Messages"}` for a file
+move; server moves add `"mode":"server","far":88199,"dst":394936,"dstValid":1508512700` (source far
+UID, COPYUID destination UID and the trash folder's UIDVALIDITY). `Result.Server` counts server
+moves; `Result.Notes` says why a folder fell back to file moves.
 Messages already in the trash folder are silently skipped; missing files are reported as skipped
 (`Result.SkippedKeys` lets the apply report count per plan item). `Cleaner.Index` is optional (nil
 when applying to the sandbox from real mode). Refs from a plan carry no path; the cleaner resolves
 key + folder against the target maildir with a per-folder key map.
 
-Undo (`U`) reverts the most recent batch not yet undone: for each entry, find the file with that key
-in the `to` folder (mbsync may have re-added a `U=`), move it back to `from` stripping `U=`, then
-append an `{"undo":"<batch>"}` marker. Missing files (already expunged server-side) are reported.
+Undo (`U`) reverts the most recent batch not yet undone: server entries are `UID MOVE`d back from
+the trash folder (by `dst`, checked against `dstValid`) in one IMAP session; for each file entry,
+find the file with that key in the `to` folder (mbsync may have re-added a `U=`), move it back to
+`from` stripping `U=`. Then it appends an `{"undo":"<batch>"}` marker. Missing messages (already
+expunged) are reported.

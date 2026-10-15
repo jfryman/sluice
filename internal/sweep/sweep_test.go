@@ -11,6 +11,8 @@ import (
 
 	"github.com/jfryman/sluice/internal/cleanup"
 	"github.com/jfryman/sluice/internal/config"
+	"github.com/jfryman/sluice/internal/imap"
+	"github.com/jfryman/sluice/internal/imap/imaptest"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/plan"
 	"github.com/jfryman/sluice/internal/sieve"
@@ -274,5 +276,37 @@ func TestTimingLine(t *testing.T) {
 	}
 	if rep, _ := Run(e.d); rep.Timing != "" {
 		t.Errorf("empty sweep reported timing %q", rep.Timing)
+	}
+}
+
+// With a Mover, existing matches move on the server; drops stay local.
+func TestCleanupOnServer(t *testing.T) {
+	e := newEnv(t)
+	hdr := "From: news@promo.example\r\nSubject: s\r\nDate: Mon, 21 Sep 2026 10:00:00 +0000\r\nList-Id: <deals.promo.example>\r\n\r\nbody\r\n"
+	os.WriteFile(filepath.Join(e.root, "Archive", "cur", "a1,U=1:2,S"), []byte(hdr), 0o600)
+	os.WriteFile(filepath.Join(e.root, "Archive", "cur", "a2,U=2:2,S"), []byte(hdr), 0o600)
+	os.WriteFile(filepath.Join(e.root, "Archive", ".mbsyncstate"), []byte("FarUidValidity 5\n\n11 1 S\n12 2 S\n"), 0o600)
+	os.WriteFile(filepath.Join(e.root, "+Sluice", "cur", "d1,U=1:2,S"), []byte(hdr), 0o600)
+	srv := imaptest.New(t)
+	srv.Put("Archive", 5, 11, 12)
+	srv.Put("Deleted Messages", 6)
+	h, p := srv.HostPort()
+	e.d.Mover = imap.Remote{Server: h, Port: p, User: srv.User, PassCmd: []string{"echo", srv.Pass}, TLS: srv.ClientTLS}
+
+	rep, err := Run(e.d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Moved != 1 || rep.Cleaned != 2 || !rep.Changed() {
+		t.Fatalf("rep = %+v", rep)
+	}
+	if e.count("+Sluice") != 0 || e.count("Deleted Messages") != 1 { // the drop moved locally
+		t.Errorf("sluice=%d trash=%d", e.count("+Sluice"), e.count("Deleted Messages"))
+	}
+	if e.count("Archive") != 2 || len(srv.UIDs("Archive")) != 0 || len(srv.UIDs("Deleted Messages")) != 2 {
+		t.Errorf("cleanup: local archive=%d server archive=%v trash=%v", e.count("Archive"), srv.UIDs("Archive"), srv.UIDs("Deleted Messages"))
+	}
+	if rep.Outcomes[0].Trashed != 2 {
+		t.Errorf("outcome = %+v", rep.Outcomes[0])
 	}
 }

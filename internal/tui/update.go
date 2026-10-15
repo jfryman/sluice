@@ -203,11 +203,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setStatus("undid batch %s: restored %d messages", msg.res.Batch, msg.res.Moved)
+		if msg.res.Server > 0 {
+			m.status += fmt.Sprintf(" (%d on the server)", msg.res.Server)
+		}
 		if len(msg.res.Skipped) > 0 {
 			m.status += fmt.Sprintf("; skipped %d (first: %s)", len(msg.res.Skipped), msg.res.Skipped[0])
 			m.statusErr = true
 		}
+		if msg.res.Server > 0 {
+			return m, tea.Batch(m.loadGroups(), m.syncAfterServerMoves())
+		}
 		return m, m.loadGroups()
+
+	case syncMsg:
+		m.busy = ""
+		switch {
+		case msg.err != nil:
+			m.setErr(fmt.Errorf("sync after server moves: %w (local copies update on the next sync)", msg.err))
+			return m, nil
+		case msg.busy:
+			m.setStatus("mbsync is already running; local copies update when it picks up the server moves")
+			return m, nil
+		}
+		m.setStatus("synced: local copies match the server")
+		return m, m.rescan()
 
 	case applyMsg:
 		m.busy = ""
@@ -237,10 +256,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setStatus("validated in sandbox — A r y applies to real")
 		}
 		m.openDialog(title, lines)
+		var cmds []tea.Cmd
 		if msg.target == m.d.Env {
-			return m, m.loadGroups() // moves already reflected in this index
+			cmds = append(cmds, m.loadGroups()) // local moves already reflected in this index
 		}
-		return m, nil
+		if msg.rep.Server > 0 {
+			cmds = append(cmds, m.syncAfterServerMoves())
+		}
+		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
 		return m, m.key(msg)

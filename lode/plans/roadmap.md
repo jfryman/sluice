@@ -6,10 +6,8 @@ reflink sandbox, apply (sandbox/real, TUI and headless), trash + undo, sweep ser
 use against KolabNow since 2026-10-14 (real applies of thousands of messages; `kolab` is the active
 script; `sluice-sweep.service` runs on the desktop).
 
-## Next
-- **Server-side trash moves** — [imap-move.md](imap-move.md): stop mbsync re-uploading every trashed
-  message. The server probe passed (MOVE + UIDPLUS, far-UID mapping verified); next is
-  `maildir.FarUIDs`.
+Real trash moves happen on the IMAP server ([../mail/server-moves.md](../mail/server-moves.md)),
+so mbsync no longer re-uploads every trashed message.
 
 ## Later
 - SaneBox migration: bulk-propose rules for everything in `+SaneBlackHole`.

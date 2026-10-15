@@ -66,6 +66,9 @@ Correspondents/identities come from the index's `sent` table: To/Cc/Bcc and From
   trash, are moved by the same `cleanup.Cleaner` **after** the drops, as a **second batch** (the
   Cleaner bumps a colliding millisecond batch id). `U` therefore undoes the cleanup, not the drops —
   undoing drops would only get them swept again. `Report.Cleaned` counts it; `Changed()` includes it.
+- With `Deps.Mover` (real `sluice sweep` and TUI `:sweep`, when `server_moves`), the **cleanup** moves
+  on the IMAP server; **drops always move locally** — they're few, and a server-moved drop would sit
+  in `+Sluice` until the next sync, where the following sweep would process it again.
 - Notification (watch mode only): `notify_cmd` + title (`sluice swept +Sluice` / `sluice sweep
   failed`) + body `sweep.Brief(outcomes)`, e.g. `blocked staff@x.org (289 trashed) · held pal@y (3
   queued)`. Skipped-only sweeps don't notify. Failures are logged, never fatal.

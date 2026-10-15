@@ -11,6 +11,7 @@
   - [plan.md](apply/plan.md) — plan-first model, plan.json shape, apply order, validation, archive
   - [sandbox.md](apply/sandbox.md) — full reflink clone, layout, refresh, safety checks
 - mail/
+  - [server-moves.md](mail/server-moves.md) — real trash moves via IMAP UID MOVE, far-UID mapping, journal, undo, live verification
   - [maildir-and-mbsync.md](mail/maildir-and-mbsync.md) — folder layout, filename anatomy, move + lock invariants
   - [index.md](mail/index.md) — SQLite schema, incremental scan, groups, score
 - sieve/
@@ -23,5 +24,4 @@
   - [keys.md](tui/keys.md) — vim keymap, dispatcher (counts/prefixes/scopes), viewport, plan undo, `:` commands
 - plans/
   - [roadmap.md](plans/roadmap.md) — built status, next, later ideas, open issues
-  - [imap-move.md](plans/imap-move.md) — planned server-side trash moves (IMAP MOVE, far-UID mapping, undo)
 - tmp/ — git-ignored session scraps

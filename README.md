@@ -40,6 +40,11 @@ flowchart LR
   outside that block, so your hand-written rules are safe.
 - **Trash** means moving messages into your trash folder (`Deleted Messages` by default). sluice
   never deletes a message file. Every move is logged, and the last batch can be undone.
+- **On your real mail, trash moves happen on the IMAP server.** Messages mbsync has already synced
+  are moved on the server in one command per folder, and sluice then runs `mail-sync` so your local
+  copy follows. That takes seconds even for thousands of messages, where moving the files locally
+  would make mbsync upload every one of them again. Anything not yet synced, and everything in the
+  sandbox, is moved as local files. Set `server_moves = false` to always move local files.
 - **The sandbox** is a complete copy of your mailbox. On btrfs it uses reflinks, so copying ~100k
   messages takes about 3 seconds and almost no disk space. Applying a plan there first shows you
   exactly what would happen. The plan is marked ✓ *validated* until you change it again.
@@ -198,6 +203,10 @@ sieve_file        = "~/.config/sieve/kolab.sieve"
 sieve_server      = "imap.kolabnow.com"
 sieve_script      = "kolab"
 sieve_port        = 4190
+imap_server       = "imap.kolabnow.com"                         # where trash moves happen (implicit TLS)
+imap_port         = 993
+server_moves      = true                                        # move trash on the IMAP server; false = move local files
+sync_cmd          = ["mail-sync"]                               # sync after a real apply/undo moved mail on the server ([] = wait for the timer)
 user              = "james@fryman.io"                           # your login (skips user_cmd); set "" to use user_cmd
 user_cmd          = ["mail-user"]                               # only used when user is empty
 pass_cmd          = ["mail-pass"]

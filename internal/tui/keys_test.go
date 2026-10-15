@@ -444,3 +444,20 @@ func TestBusyIndicator(t *testing.T) {
 		t.Errorf("motion while busy: cur = %d", m.lc.cur)
 	}
 }
+
+func TestSyncAfterServerMoves(t *testing.T) {
+	m := testModel(t, 1)
+	m.d.Config.SyncCmd = nil
+	if cmd := m.syncAfterServerMoves(); cmd != nil {
+		t.Error("no sync_cmd: expected no command")
+	}
+	m.busy = "syncing mail"
+	m.Update(syncMsg{busy: true})
+	if m.busy != "" || !strings.Contains(m.status, "already running") {
+		t.Errorf("busy sync: busy=%q status=%q", m.busy, m.status)
+	}
+	m.Update(syncMsg{err: fmt.Errorf("exit 1")})
+	if !m.statusErr || !strings.Contains(m.status, "next sync") {
+		t.Errorf("failed sync: %q", m.status)
+	}
+}

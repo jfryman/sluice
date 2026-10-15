@@ -55,7 +55,12 @@ sequenceDiagram
   form (no activity tracking). The cleaner and sandbox refresh pass the mail root.
 - Every local move costs a full upload: mbsync has no server-side move, so a message moved into
   `Deleted Messages` is APPENDed there and expunged from its source. ~4k moves kept mbsync busy for
-  10+ minutes (2026-10-14), holding the lock the whole time.
+  10+ minutes (2026-10-14), holding the lock the whole time. That's why real trash moves happen on
+  the IMAP server instead ([server-moves.md](server-moves.md)); local file moves remain for the
+  sandbox, unsynced files and fallbacks.
+- Local `U=` is mbsync's **near** UID, not the server's: `maildir.FarUIDs(root, folder)` reads the
+  folder's `.mbsyncstate` (`FarUidValidity`, then `far near flags` pairs) and refuses while a
+  `.mbsyncstate.journal` is present (`ErrStatePending`). `maildir.NearUID(name)` parses `U=`.
 - Never write into `new/`; moved files go to `cur/` with `:2,<flags>` preserved.
 - Never unlink. If the destination exists, skip and report.
 - Header parsing reads at most 64 KiB per file (stop at first blank line).

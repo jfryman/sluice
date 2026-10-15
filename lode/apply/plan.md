@@ -53,8 +53,13 @@ See [../sieve/remote.md](../sieve/remote.md#server-model).
    target's publisher (real: native ManageSieve session; sandbox: file publisher). Publish failure aborts the
    whole apply before any mail moves.
 2. Trash: all refs from all items in **one** cleanup batch (so `U` undoes the entire apply).
-   `Ref.Folder` + key are resolved against the target maildir (paths are never trusted).
-3. Report: per-rule log, per-item moved/skipped counts, first few skip reasons.
+   `Ref.Folder` + key are resolved against the target maildir (paths are never trusted). On the real
+   target `Target.Server` (an `imap.Remote`) moves synced messages on the server
+   ([../mail/server-moves.md](../mail/server-moves.md)); the sandbox target has none.
+3. Report: per-rule log, per-item moved/skipped counts, first few skip reasons, `Server` (moved on the
+   server; local copies follow on the next sync) and fallback `Notes`.
+4. After a real apply or undo with server moves, the TUI and headless apply run `sync_cmd`
+   (`plan.Sync`; exit 75 = mail-sync's flock found mbsync running → not an error) and rescan.
 
 Progress: `Target.Progress func(stage string)` (optional) gets `publishing rules` and, via
 `cleanup.Cleaner.Progress` (throttled to 100ms, always called at done == total),

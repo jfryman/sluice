@@ -33,6 +33,7 @@ c.Check(text); c.Put("kolab", text); c.SetActive("kolab")   // {n+} non-synchron
 - Config: `sieve_server`, `sieve_port` (default 4190). `Remote.TLS` overrides the TLS config (tests).
 
 ## Credentials
+Resolved by `internal/creds` (`creds.Get`, `creds.Wipe`), shared with the IMAP mover.
 - Username: config `user` if set (no command run — preferred: a username isn't secret and `op read`
   may need a 1Password authorisation per caller); else output of `user_cmd` (default `mail-user`).
 - Password: output of `pass_cmd` (default `mail-pass`: 1Password, cached 8h in the kernel keyring).

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -26,6 +27,8 @@ type Target struct {
 	// AllowSwitchFrom is the other active script the user confirmed
 	// replacing (from a Status precheck); empty means never switch.
 	AllowSwitchFrom string
+	// Server, if set, moves synced messages on the IMAP server (real only).
+	Server cleanup.Mover
 	// Progress, if set, gets a short description of each apply step
 	// ("publishing rules", "moving 120/5012 messages").
 	Progress func(stage string)
@@ -39,7 +42,7 @@ func (t Target) progress(stage string) {
 
 func (t Target) Cleaner() *cleanup.Cleaner {
 	return &cleanup.Cleaner{Index: t.Index, Root: t.Root, TrashFolder: t.TrashFolder,
-		LockFile: t.LockFile, JournalPath: t.JournalPath}
+		LockFile: t.LockFile, JournalPath: t.JournalPath, Server: t.Server}
 }
 
 // SieveDiff renders what the plan's rule ops would change in the target's
@@ -77,6 +80,8 @@ type Report struct {
 	Batch     string
 	Items     []ItemReport
 	Moved     int
+	Server    int // of Moved: moved on the IMAP server; local copies follow on the next sync
+	Notes     []string
 	Skipped   []string
 }
 
@@ -94,6 +99,12 @@ func (r Report) Lines() []string {
 	}
 	if r.Moved > 0 {
 		out = append(out, "", fmt.Sprintf("%d messages moved in batch %s (U undoes it)", r.Moved, r.Batch))
+	}
+	if r.Server > 0 {
+		out = append(out, fmt.Sprintf("%d of them moved on the server; local copies update after the next sync", r.Server))
+	}
+	for _, n := range r.Notes {
+		out = append(out, "note: "+n)
 	}
 	if len(r.Skipped) > 0 {
 		out = append(out, fmt.Sprintf("%d skipped:", len(r.Skipped)))
@@ -153,8 +164,10 @@ func Apply(p *Plan, t Target) (Report, error) {
 	c := t.Cleaner()
 	c.Progress = func(done, total int) { t.progress(fmt.Sprintf("moving %d/%d messages", done, total)) }
 	c.OnWait = func(w time.Duration) { t.progress(timing.WaitingForMbsync(w)) }
+	c.Stage = t.progress
 	res, err := c.Trash(msgs)
 	rep.Batch, rep.Moved, rep.Skipped = res.Batch, res.Moved, res.Skipped
+	rep.Server, rep.Notes = res.Server, res.Notes
 	for _, it := range p.Trash {
 		ir := ItemReport{Label: it.Label, Planned: len(it.Refs)}
 		for _, r := range it.Refs {
@@ -165,4 +178,22 @@ func Apply(p *Plan, t Target) (Report, error) {
 		rep.Items = append(rep.Items, ir)
 	}
 	return rep, err
+}
+
+// Sync runs the configured sync command (e.g. mail-sync) after server moves.
+// mail-sync's flock exits 75 when mbsync is already running: not an error,
+// that run or the next one picks the changes up (Busy reports it).
+func Sync(argv []string) (busy bool, err error) {
+	if len(argv) == 0 {
+		return false, nil
+	}
+	out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 75 {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("%s: %w: %s", strings.Join(argv, " "), err, strings.TrimSpace(string(out)))
+	}
+	return false, nil
 }

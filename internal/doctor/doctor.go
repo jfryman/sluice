@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jfryman/sluice/internal/config"
+	"github.com/jfryman/sluice/internal/imap"
 	"github.com/jfryman/sluice/internal/index"
 	"github.com/jfryman/sluice/internal/maildir"
 	"github.com/jfryman/sluice/internal/plan"
@@ -104,6 +105,7 @@ type Options struct {
 	LookPath   func(string) (string, error)
 	MbsyncRC   string // path override for the mbsync config
 	RemoteStat func() (sieve.ServerStatus, error)
+	IMAPProbe  func(folders []string) (imap.ProbeResult, error)
 	// ServiceState returns the sweep unit's ActiveState ("active", "failed",
 	// …) or "not-found" when it isn't installed.
 	ServiceState func() (string, error)
@@ -145,6 +147,7 @@ func Run(cfg config.Config, o Options) Report {
 	}
 	if o.Online {
 		d.server()
+		d.imapServer()
 	}
 	return Report{Checks: d.checks}
 }
@@ -587,6 +590,61 @@ func (d *run) server() {
 	default:
 		d.add("server", OK, realOnly, fmt.Sprintf("%s: %q active, matches local%s", srv, ours, took), "")
 	}
+}
+
+// imapServer checks server-side trash moves: login, UIDPLUS/MOVE, and that
+// the trash folder's UIDVALIDITY still matches mbsync's FarUidValidity.
+func (d *run) imapServer() {
+	if !d.cfg.ServerMoves {
+		d.add("imap moves", OK, realOnly, "server_moves = false: trash moves are local file moves (mbsync re-uploads them)", "")
+		return
+	}
+	rec := &timing.Recorder{}
+	probe := d.o.IMAPProbe
+	if probe == nil {
+		r := imap.Remote{Server: d.cfg.ImapServer, Port: d.cfg.ImapPort, User: d.cfg.User,
+			UserCmd: d.cfg.UserCmd, PassCmd: d.cfg.PassCmd, Trace: rec}
+		probe = r.Probe
+	}
+	trash := d.cfg.TrashFolder
+	res, err := probe([]string{trash})
+	took := ""
+	if t := rec.String(); t != "" {
+		took = " [" + t + "]"
+	}
+	if err != nil {
+		d.add("imap moves", Warn, realOnly, err.Error()+took,
+			"check imap_server/imap_port and credentials; until then trash moves fall back to local file moves")
+		return
+	}
+	if !res.Move {
+		d.add("imap moves", Warn, realOnly, d.cfg.ImapServer+" lacks UIDPLUS: trash moves fall back to local file moves", "")
+		return
+	}
+	far, _, ferr := maildir.FarUIDs(d.cfg.MailRoot, trash)
+	switch {
+	case ferr != nil:
+		d.add("imap moves", Warn, realOnly, fmt.Sprintf("can't read mbsync state for %q: %v", trash, ferr),
+			"run mail-sync once so mbsync writes its state")
+	case res.Validity[trash] != far:
+		d.add("imap moves", Warn, realOnly, fmt.Sprintf("%q UIDVALIDITY %d on the server ≠ %d in mbsync's state", trash, res.Validity[trash], far),
+			"mbsync's mapping is stale for that folder; a full mail-sync refreshes it")
+	default:
+		how := "UID MOVE"
+		if !contains(res.Caps, "MOVE") {
+			how = "UID COPY + EXPUNGE"
+		}
+		d.add("imap moves", OK, realOnly, fmt.Sprintf("%s: %s with COPYUID; %q UIDVALIDITY matches mbsync%s", d.cfg.ImapServer, how, trash, took), "")
+	}
+}
+
+func contains(xs []string, x string) bool {
+	for _, y := range xs {
+		if y == x {
+			return true
+		}
+	}
+	return false
 }
 
 // ---- helpers ----

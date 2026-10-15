@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jfryman/sluice/internal/imap"
+	"github.com/jfryman/sluice/internal/imap/imaptest"
 	"github.com/jfryman/sluice/internal/sieve"
 )
 
@@ -105,5 +107,52 @@ func TestApply(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(mail, "Archive/cur/k3:2,")); err != nil {
 		t.Fatal("mail moved despite publish failure")
+	}
+}
+
+func TestApplyServerMoves(t *testing.T) {
+	root := t.TempDir()
+	mail := filepath.Join(root, "Mail")
+	for _, f := range []string{"Archive", "Deleted Messages"} {
+		os.MkdirAll(filepath.Join(mail, f, "cur"), 0o700)
+	}
+	os.WriteFile(filepath.Join(mail, "Archive/cur/k1,U=1:2,S"), []byte("x"), 0o600)
+	os.WriteFile(filepath.Join(mail, "Archive/cur/k2:2,"), []byte("x"), 0o600) // unsynced
+	os.WriteFile(filepath.Join(mail, "Archive/.mbsyncstate"), []byte("FarUidValidity 7\n\n41 1 S\n"), 0o600)
+	srv := imaptest.New(t)
+	srv.Put("Archive", 7, 41)
+	srv.Put("Deleted Messages", 9)
+	h, port := srv.HostPort()
+	var steps []string
+	tgt := Target{Name: "real", Root: mail, TrashFolder: "Deleted Messages",
+		LockFile: filepath.Join(root, "lock"), JournalPath: filepath.Join(root, "j.jsonl"),
+		Server:   imap.Remote{Server: h, Port: port, User: srv.User, PassCmd: []string{"echo", srv.Pass}, TLS: srv.ClientTLS},
+		Progress: func(s string) { steps = append(steps, s) }}
+	var p Plan
+	p.AddTrash("promo", []Ref{{"k1", "Archive"}, {"k2", "Archive"}})
+	rep, err := Apply(&p, tgt)
+	if err != nil || rep.Moved != 2 || rep.Server != 1 || rep.Items[0].Moved != 2 {
+		t.Fatalf("rep = %+v err = %v", rep, err)
+	}
+	if len(srv.UIDs("Archive")) != 0 || len(srv.UIDs("Deleted Messages")) != 1 {
+		t.Errorf("server: archive %v trash %v", srv.UIDs("Archive"), srv.UIDs("Deleted Messages"))
+	}
+	if !strings.Contains(strings.Join(rep.Lines(), "\n"), "1 of them moved on the server") {
+		t.Errorf("report lines: %q", rep.Lines())
+	}
+	if !strings.Contains(strings.Join(steps, "|"), "moving on server") {
+		t.Errorf("progress = %q", steps)
+	}
+}
+
+func TestSync(t *testing.T) {
+	if busy, err := Sync(nil); busy || err != nil {
+		t.Errorf("no command: %v %v", busy, err)
+	}
+	if busy, err := Sync([]string{"sh", "-c", "exit 75"}); !busy || err != nil {
+		t.Errorf("exit 75 (mbsync running): busy=%v err=%v", busy, err)
+	}
+	if _, err := Sync([]string{"sh", "-c", "echo boom; exit 1"}); err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("failure: %v", err)
 	}
 }

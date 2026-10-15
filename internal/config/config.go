@@ -23,9 +23,14 @@ type Config struct {
 	SieveServer      string   `toml:"sieve_server"`
 	SieveScript      string   `toml:"sieve_script"`
 	SievePort        int      `toml:"sieve_port"`
-	User             string   `toml:"user"` // if set, user_cmd is not run
-	UserCmd          []string `toml:"user_cmd"`
-	PassCmd          []string `toml:"pass_cmd"`
+	ImapServer       string   `toml:"imap_server"`
+	ImapPort         int      `toml:"imap_port"` // implicit TLS
+	// ServerMoves: real trash moves happen on the IMAP server (UID MOVE)
+	// instead of as local file moves mbsync must re-upload.
+	ServerMoves bool     `toml:"server_moves"`
+	User        string   `toml:"user"` // if set, user_cmd is not run
+	UserCmd     []string `toml:"user_cmd"`
+	PassCmd     []string `toml:"pass_cmd"`
 
 	SandboxDir string `toml:"sandbox_dir"`
 	// TrainingFolder is the drop-to-block folder `sluice sweep` watches.
@@ -36,6 +41,9 @@ type Config struct {
 	SweepInterval string `toml:"sweep_interval"`
 	// PostSweepCmd runs after a sweep moved local mail (e.g. ["mail-sync"]).
 	PostSweepCmd []string `toml:"post_sweep_cmd"`
+	// SyncCmd runs after a real apply or undo that moved mail on the IMAP
+	// server, so the local copies follow right away; empty waits for the timer.
+	SyncCmd []string `toml:"sync_cmd"`
 	// SaneboxFolders are the SaneBox tab's folders, in order; empty means
 	// every indexed folder starting with "+Sane" that holds mail.
 	SaneboxFolders []string `toml:"sanebox_folders"`
@@ -70,6 +78,9 @@ func Default() Config {
 		SieveServer:      "imap.kolabnow.com",
 		SieveScript:      "kolab",
 		SievePort:        4190,
+		ImapServer:       "imap.kolabnow.com",
+		ImapPort:         993,
+		ServerMoves:      true,
 		User:             "james@fryman.io",
 		UserCmd:          []string{"mail-user"},
 		PassCmd:          []string{"mail-pass"},
@@ -78,6 +89,7 @@ func Default() Config {
 		SentFolders:      []string{"Sent Messages", "Sent Items"},
 		SweepInterval:    "5m",
 		PostSweepCmd:     []string{"mail-sync"},
+		SyncCmd:          []string{"mail-sync"},
 		SweepCleanup:     "apply",
 		NotifyCmd:        []string{"notify-send", "-a", "sluice"},
 	}

@@ -56,6 +56,11 @@ outcome count tracked from startup). New outcomes reload plan + sieve + groups a
 `swept +Sluice: blocked X (N trashed) · held Y (M queued)` (`sweep.Brief`). Plan tab colors
 `sweep:` items accent and `sweep (held…)` items warn with ⚠.
 
+**After server moves:** an `applyMsg` (real) or `undoMsg` whose report has `Server > 0` starts
+`syncAfterServerMoves` (`runBusy("syncing mail (mail-sync)")` → `plan.Sync`) → `syncMsg` → status +
+`rescan()`; "already running" (exit 75) and failures only set the status. IMAP steps reach the badge
+through `tracedMover` (`server: auth`, …); `MoveAll` reports `moving on server N/M (Folder)`.
+
 **Busy indicator:** while `busy` is set the tab bar's right side shows a badge
 `⠋ <label> · <step> · m:ss` (`busyBadge`; elapsed from 2s; redrawn by the spinner ticks), replacing
 "N msgs indexed". Long work runs through `runBusy(label, work(progress))`: a goroutine sends

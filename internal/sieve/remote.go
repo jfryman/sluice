@@ -1,18 +1,17 @@
 package sieve
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/jfryman/sluice/internal/creds"
 	"github.com/jfryman/sluice/internal/timing"
 )
 
@@ -90,43 +89,13 @@ func (r Remote) addr() string {
 	return net.JoinHostPort(r.Server, strconv.Itoa(port))
 }
 
-func output(argv []string) ([]byte, error) {
-	if len(argv) == 0 {
-		return nil, errors.New("empty credential command")
-	}
-	var stderr bytes.Buffer
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w: %s", argv[0], err, strings.TrimSpace(stderr.String()))
-	}
-	return bytes.TrimRight(out, "\r\n"), nil
-}
-
 // session runs fn inside one authenticated connection.
 func (r Remote) session(fn func(c *Client) error) error {
-	user := r.User
-	if user == "" {
-		done := r.Trace.Time("user")
-		u, err := output(r.UserCmd)
-		done()
-		if err != nil {
-			return fmt.Errorf("credentials: %w", err)
-		}
-		user = string(u)
-	}
-	done := r.Trace.Time("pass")
-	pass, err := output(r.PassCmd)
-	done()
+	user, pass, err := creds.Get(r.User, r.UserCmd, r.PassCmd, r.Trace)
 	if err != nil {
-		return fmt.Errorf("credentials: %w", err)
+		return err
 	}
-	defer func() {
-		for i := range pass {
-			pass[i] = 0
-		}
-	}()
+	defer creds.Wipe(pass)
 	cfg := r.TLS
 	if cfg == nil {
 		cfg = &tls.Config{ServerName: r.Server, MinVersion: tls.VersionTLS12}
