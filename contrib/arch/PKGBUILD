@@ -1,0 +1,94 @@
+# Maintainer: James Fryman <james@fryman.io>
+#
+# Builds sluice from the GitHub repo (main). See lode/development.md#packaging.
+#   cd contrib/arch && makepkg -si
+pkgname=sluice-git
+_pkgname=sluice
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc='Plan-first TUI that turns mail noise into Sieve rules (KolabNow + mbsync + SaneBox)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/jfryman/sluice'
+license=('MIT')
+depends=('glibc')
+makedepends=('git' 'go>=2:1.27.1')
+optdepends=(
+  'isync: mbsync keeps the local maildir sluice reads in sync (mail-sync wrapper)'
+  'libnotify: notify-send for sweep notifications (notify_cmd)'
+  'keyutils: keyctl, used by the mail-pass credential helper'
+)
+provides=("$_pkgname")
+conflicts=("$_pkgname")
+install=sluice.install
+source=("$_pkgname::git+$url.git#branch=main")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$_pkgname"
+  git describe --long --tags --abbrev=7 | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
+
+# The dev install (`make install` / `make install-service`) would shadow this
+# package: ~/.local/bin comes first on PATH, and a unit in
+# ~/.config/systemd/user overrides /usr/lib/systemd/user. makepkg runs as the
+# installing user, so refuse here, before anything is built or installed.
+# (pacman ignores scriptlet failures, so sluice.install can only warn.)
+_check_dev_install() {
+  local found=()
+  [[ -e "$HOME/.local/bin/sluice" ]] && found+=("$HOME/.local/bin/sluice  → rm ~/.local/bin/sluice")
+  [[ -e "$HOME/.config/systemd/user/sluice-sweep.service" ]] &&
+    found+=("$HOME/.config/systemd/user/sluice-sweep.service  → make uninstall-service (in the repo)")
+  ((${#found[@]})) || return 0
+  if [[ -n "${SLUICE_ALLOW_DEV:-}" ]]; then
+    warning "dev install present, building anyway (SLUICE_ALLOW_DEV)"
+    return 0
+  fi
+  error "A dev install of sluice is present; it would shadow this package:"
+  local f
+  for f in "${found[@]}"; do plain "  $f"; done
+  plain "Remove it, then run makepkg again (or set SLUICE_ALLOW_DEV=1 to build anyway)."
+  return 1
+}
+
+prepare() {
+  _check_dev_install
+  cd "$_pkgname"
+  export GOPATH="$srcdir/gopath"
+  export GOFLAGS='-modcacherw' # keep the module cache deletable (makepkg cleans src/)
+  go mod download -x
+}
+
+build() {
+  cd "$_pkgname"
+  export GOPATH="$srcdir/gopath"
+  export CGO_CPPFLAGS="$CPPFLAGS" CGO_CFLAGS="$CFLAGS" CGO_CXXFLAGS="$CXXFLAGS" CGO_LDFLAGS="$LDFLAGS"
+  export GOFLAGS='-buildmode=pie -trimpath -mod=readonly -modcacherw'
+  # Same stamps as the Makefile (lode/development.md#versioning); the date
+  # comes from SOURCE_DATE_EPOCH so the build is reproducible.
+  local vpkg=github.com/jfryman/sluice/internal/version
+  local ldflags="-linkmode=external -X $vpkg.Version=$(git describe --tags --always)"
+  ldflags+=" -X $vpkg.Commit=$(git rev-parse --short HEAD) -X $vpkg.Branch=main"
+  ldflags+=" -X $vpkg.Date=$(date -u -d "@${SOURCE_DATE_EPOCH:-$(date +%s)}" +%Y-%m-%dT%H:%M:%SZ)"
+  go build -ldflags "$ldflags" -o build/sluice ./cmd/sluice
+}
+
+check() {
+  cd "$_pkgname"
+  export GOPATH="$srcdir/gopath"
+  export GOFLAGS='-trimpath -mod=readonly -modcacherw'
+  go test ./...
+}
+
+package() {
+  cd "$_pkgname"
+  install -Dm755 build/sluice "$pkgdir/usr/bin/sluice"
+  # The repo unit runs ~/.local/bin/sluice (make install-service); the
+  # packaged one runs the system binary. PATH keeps ~/.local/bin for
+  # credential helpers like mail-pass.
+  sed 's|^ExecStart=%h/.local/bin/sluice |ExecStart=/usr/bin/sluice |' \
+    contrib/systemd/sluice-sweep.service > build/sluice-sweep.service
+  grep -q '^ExecStart=/usr/bin/sluice ' build/sluice-sweep.service
+  install -Dm644 build/sluice-sweep.service "$pkgdir/usr/lib/systemd/user/sluice-sweep.service"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$_pkgname/README.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

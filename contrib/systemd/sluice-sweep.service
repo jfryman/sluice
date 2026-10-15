@@ -1,6 +1,7 @@
 # sluice sweep service: turns messages dropped into the training folder
-# (default +Sluice) into Sieve rules, and queues cleanup of existing mail
-# into the plan. Install with `make install-service`.
+# (default +Sluice) into Sieve rules and trashes existing matching mail
+# (sweep_cleanup). Install with `make install-service` (runs
+# ~/.local/bin/sluice) or the Arch package in contrib/arch (/usr/bin/sluice).
 [Unit]
 Description=sluice sweep (training folder → Sieve rules)
 Documentation=https://github.com/jfryman/sluice

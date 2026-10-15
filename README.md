@@ -124,6 +124,21 @@ make install          # runs checks, builds, installs to ~/.local/bin/sluice
 sluice doctor         # check this machine meets the requirements
 ```
 
+On Arch Linux (x86_64 or aarch64) you can install it as a package instead. It builds the latest
+`main` from GitHub, runs the tests, and installs `/usr/bin/sluice` plus the sweep service as a
+systemd user unit:
+
+```sh
+cd contrib/arch && makepkg -si                       # sluice-git
+systemctl --user enable --now sluice-sweep.service   # the +Sluice service, per user
+```
+
+Use one or the other: a `~/.local/bin/sluice` from `make install` would come first on your PATH,
+and the repo's user unit would override the packaged one. So `makepkg` refuses to build while
+either is present. Delete `~/.local/bin/sluice` and run `make uninstall-service` first, or set
+`SLUICE_ALLOW_DEV=1` to build anyway. After upgrading the package, run
+`systemctl --user restart sluice-sweep.service`.
+
 ## Quick start
 
 ```sh
@@ -278,7 +293,13 @@ mail or your Sieve script. **Applying a plan to a real server hasn't been tried 
 with one rule and a small batch of trash.
 
 A few things to expect:
-- mbsync sends a move to the server as "upload the message again, then delete the original", so
-  trashing a lot of archive mail makes for a long next sync.
+- Trash on your real mail is moved on the IMAP server, so the next sync only downloads the trash
+  copies. With `server_moves = false`, or for messages that were never synced, mbsync turns each
+  local move into "upload the message again, then delete the original", so trashing a lot of mail
+  that way makes for a long next sync.
 - If your Sieve server can't create folders (KolabNow can't), file-into rules can only target
   folders that already exist.
+
+## License
+
+MIT; see [LICENSE](LICENSE).

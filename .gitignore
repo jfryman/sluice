@@ -1,3 +1,10 @@
 lode/tmp/*
 !lode/tmp/.gitkeep
 /bin/
+
+# makepkg output (contrib/arch)
+contrib/arch/src/
+contrib/arch/pkg/
+contrib/arch/sluice/
+contrib/arch/*.pkg.tar.*
+contrib/arch/*.log

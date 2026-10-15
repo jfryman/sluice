@@ -1,0 +1,39 @@
+# pacman runs these as root and ignores their exit status, so a dev install
+# can't be blocked here (PKGBUILD's prepare() refuses for the building user);
+# this warns about every user's home instead.
+_dev_installs() {
+  local h
+  for h in /root /home/*; do
+    [[ -e "$h/.local/bin/sluice" ]] && echo "    $h/.local/bin/sluice  (rm it)"
+    [[ -e "$h/.config/systemd/user/sluice-sweep.service" ]] &&
+      echo "    $h/.config/systemd/user/sluice-sweep.service  (make uninstall-service)"
+  done
+}
+
+_warn_dev() {
+  local found
+  found=$(_dev_installs)
+  [[ -z "$found" ]] && return 0
+  echo '==> WARNING: a dev install of sluice shadows this package:'
+  echo "$found"
+  echo '    ~/.local/bin comes first on PATH and a ~/.config unit overrides the packaged one.'
+}
+
+pre_install() {
+  _warn_dev
+}
+
+pre_upgrade() {
+  _warn_dev
+}
+
+post_install() {
+  echo '==> sluice: per-user setup (not done by the package):'
+  echo '    sluice doctor -online                                 # check config, mbsync, credentials, server'
+  echo '    systemctl --user enable --now sluice-sweep.service    # +Sluice drop-to-block service'
+}
+
+post_upgrade() {
+  echo '==> sluice: restart the sweep service to pick up the new binary:'
+  echo '    systemctl --user restart sluice-sweep.service'
+}

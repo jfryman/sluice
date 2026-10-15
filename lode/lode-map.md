@@ -6,7 +6,7 @@
 - [architecture.md](architecture.md) — packages, dependency graph, config keys, CLI
 - [sweep.md](sweep.md) — `+Sluice` training folder, `sluice sweep [-watch]` service, outcomes, guards
 - [doctor.md](doctor.md) — `sluice doctor`: formal requirements, checks, capabilities, fixes
-- [development.md](development.md) — make targets, watch loop, testing without touching real data
+- [development.md](development.md) — make targets, versioning, Arch packaging (contrib/arch), watch loop, testing without touching real data
 - apply/
   - [plan.md](apply/plan.md) — plan-first model, plan.json shape, apply order, validation, archive
   - [sandbox.md](apply/sandbox.md) — full reflink clone, layout, refresh, safety checks
