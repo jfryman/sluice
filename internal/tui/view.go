@@ -155,7 +155,7 @@ func (m *Model) help() string {
 	case tabRules:
 		return "dd remove · x plan trash · V visual · / find" + tail
 	case tabSearch:
-		return "/ edit query · X plan trash of all matches" + tail
+		return "/ edit query · t plan rules + trash · X plan trash of all matches" + tail
 	}
 	return "dd drop · enter messages · D discard · V visual" + tail
 }

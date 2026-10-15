@@ -318,3 +318,39 @@ func TestSweepLogAndCleanupMsgs(t *testing.T) {
 		t.Errorf("u should undo the queued cleanup: %+v", m.plan)
 	}
 }
+
+func TestSearchRules(t *testing.T) {
+	m := testModel(t, 1)
+	g := func(k index.Kind, v string, n int) index.Group { return index.Group{Kind: k, Value: v, Total: n} }
+	m.Update(searchRulesMsg{query: "name:x", rules: []searchRule{
+		{group: g(index.KindSender, "a@spam.example", 5)},
+		{group: g(index.KindList, "deals.example", 3)},
+		{group: g(index.KindSender, "pal@friend.example", 1), held: "someone you've sent mail to"},
+	}})
+	if m.ov != ovDialog || len(m.dialog.actions) != 1 || !strings.Contains(strings.Join(m.dialog.lines, "\n"), "Left out") {
+		t.Fatalf("dialog %q %v", m.dialog.lines, m.dialog.actions)
+	}
+	press(m, "y")
+	if len(m.plan.Rules) != 2 {
+		t.Fatalf("want 2 planned rules, got %+v", m.plan.Rules)
+	}
+	for _, r := range m.plan.Rules {
+		if r.Rule.Action != sieve.ActionTrash || r.Rule.Value == "pal@friend.example" {
+			t.Errorf("rule %+v", r.Rule)
+		}
+	}
+
+	// Already-planned rules are not added again; too many new ones refuse.
+	m.Update(searchRulesMsg{query: "name:x", rules: []searchRule{{group: g(index.KindSender, "a@spam.example", 5)}}})
+	if !strings.Contains(m.dialog.lines[0], "Add 0 trash rule") {
+		t.Errorf("existing rule: %q", m.dialog.lines)
+	}
+	var many []searchRule
+	for i := 0; i <= maxSearchRules; i++ {
+		many = append(many, searchRule{group: g(index.KindSender, fmt.Sprintf("s%d@x.example", i), 1)})
+	}
+	m.Update(searchRulesMsg{query: "older:1y", rules: many})
+	if len(m.dialog.actions) != 0 || !strings.Contains(m.dialog.lines[0], "limit") {
+		t.Errorf("limit: %q", m.dialog.lines)
+	}
+}

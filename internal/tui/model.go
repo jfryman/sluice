@@ -516,6 +516,124 @@ func (m *Model) searchAll(text string) tea.Cmd {
 	}
 }
 
+// maxSearchRules caps how many new rules one Search-tab t may plan, so a
+// broad query can't become hundreds of rules.
+const maxSearchRules = 20
+
+// searchRule is a rule derived from search matches: their List-Id, else
+// their exact From address (never a domain or display name).
+type searchRule struct {
+	group index.Group // Kind, Value, Name, Total (matches covered)
+	held  string      // non-empty: sender is a correspondent/own address
+}
+
+type searchRulesMsg struct {
+	query string
+	rules []searchRule
+	err   error
+}
+
+// searchRules derives list/sender rules from every match of the query.
+func (m *Model) searchRules(text string) tea.Cmd {
+	ix := m.d.Index
+	return func() tea.Msg {
+		q, err := query.Parse(text)
+		if err != nil {
+			return searchRulesMsg{err: err}
+		}
+		all, _, err := ix.Search(q, 0)
+		if err != nil {
+			return searchRulesMsg{err: err}
+		}
+		byID := map[string]*searchRule{}
+		var out []*searchRule
+		for _, x := range all {
+			kind, value := index.KindList, x.ListID
+			if value == "" {
+				kind, value = index.KindSender, strings.ToLower(x.FromAddr)
+			}
+			if value == "" {
+				continue
+			}
+			id := string(kind) + "\x00" + value
+			r, ok := byID[id]
+			if !ok {
+				r = &searchRule{group: index.Group{Kind: kind, Value: value, Name: x.FromName}}
+				byID[id] = r
+				out = append(out, r)
+			}
+			r.group.Total++
+			if r.held == "" {
+				known, why, err := ix.Known(x.FromAddr)
+				if err != nil {
+					return searchRulesMsg{err: err}
+				}
+				if known {
+					r.held = why
+				}
+			}
+		}
+		sort.SliceStable(out, func(i, j int) bool { return out[i].group.Total > out[j].group.Total })
+		msg := searchRulesMsg{query: text}
+		for _, r := range out {
+			msg.rules = append(msg.rules, *r)
+		}
+		return msg
+	}
+}
+
+// confirmSearchRules shows the derived rules; y plans the new ones, then
+// offers trash of all existing mail they (and already-present rules) match.
+func (m *Model) confirmSearchRules(msg searchRulesMsg) {
+	var fresh, ruled []index.Group
+	var lines, heldLines []string
+	for _, r := range msg.rules {
+		g := r.group
+		line := fmt.Sprintf("  %6d  %-6s %s", g.Total, g.Kind, g.Value)
+		if g.Name != "" && g.Kind == index.KindSender {
+			line += "  (" + g.Name + ")"
+		}
+		switch _, exists := m.ruleFor(g); {
+		case r.held != "":
+			heldLines = append(heldLines, line+"  — "+r.held)
+		case exists:
+			ruled = append(ruled, g)
+			lines = append(lines, line+"  (already a rule)")
+		default:
+			fresh = append(fresh, g)
+			lines = append(lines, line)
+		}
+	}
+	title := "Plan trash rules from query " + msg.query
+	if len(fresh) > maxSearchRules {
+		m.openDialog(title, []string{
+			fmt.Sprintf("These matches would need %d new rules (limit %d).", len(fresh), maxSearchRules),
+			"Narrow the query (e.g. name: or from:) and try again. Nothing was planned.",
+		})
+		return
+	}
+	if len(fresh) == 0 && len(ruled) == 0 {
+		lines = []string{"No rule to add: every matching sender is held."}
+		m.openDialog(title, append(lines, append([]string{"", "Held (never auto-blocked):"}, heldLines...)...))
+		return
+	}
+	head := []string{fmt.Sprintf("Add %d trash rule(s) — matched on List-Id, else exact sender:", len(fresh)), ""}
+	lines = append(head, lines...)
+	if len(heldLines) > 0 {
+		lines = append(lines, "", "Left out (never auto-blocked):")
+		lines = append(lines, heldLines...)
+	}
+	lines = append(lines, "", "y plans the rules, then shows existing mail they match to trash.")
+	m.openDialog(title, lines, action{"y", "plan rules", func() tea.Cmd {
+		if err := m.stageRules(fresh, sieve.ActionTrash, ""); err != nil {
+			m.setErr(err)
+			return nil
+		}
+		m.setStatus("planned %d trash rule(s) — A to apply", len(fresh))
+		return tea.Batch(m.startBusy("finding existing mail"), m.retro(append(fresh, ruled...)))
+	}})
+}
+
 func (m *Model) undo() tea.Cmd {
 	c := m.d.Target.Cleaner()
 	return func() tea.Msg {

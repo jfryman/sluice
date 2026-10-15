@@ -148,7 +148,7 @@ Press `?` in the TUI for the full list for the screen you're on.
 | Select | `V` to select a range of rows, `space` to mark one row, `esc` to clear |
 | Candidates | `t` trash rule · `f` file into folder · `r` mark-read rule · `x` trash existing mail · `enter` details · `gl`/`gd`/`gs` group by list/domain/sender · `s`/`S` sort · `zh` hide groups that already have rules |
 | Rules | `dd` remove · `x` trash existing mail that matches |
-| Search | `/` edit the query · `X` trash all matches |
+| Search | `/` edit the query · `t` block the matches' senders (rules + trash) · `X` trash all matches only |
 | Plan | `dd` drop an item · `enter` show its messages · `D` discard the whole plan |
 | Everywhere | `A` apply · `u`/`ctrl+r` undo/redo plan changes · `U` undo the last applied trash batch · `:` command line · `R` rescan · `q`/`ZZ` quit |
 

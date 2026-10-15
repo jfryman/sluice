@@ -78,6 +78,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus("%d matches", msg.total)
 		return m, nil
 
+	case searchRulesMsg:
+		m.busy = ""
+		if msg.err != nil {
+			m.setErr(msg.err)
+			return m, nil
+		}
+		m.confirmSearchRules(msg)
+		return m, nil
+
 	case retroMsg:
 		m.busy = ""
 		if msg.err != nil {

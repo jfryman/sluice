@@ -55,7 +55,7 @@ report says "A r y applies to real") needs a dialog-scope binding too; `A` has o
 | lists | `j`/`k` · `gg`/`G` (`{n}G` line n) · `ctrl+d`/`ctrl+u` half page · `ctrl+f`/`ctrl+b` page · `H`/`M`/`L` · `zz`/`zt`/`zb` · `ctrl+e`/`ctrl+y` · `/` search (not Search tab) · `n`/`N` next/prev match · `V` visual line · `esc` leave visual / clear marks |
 | candidates | `space` mark · `gl`/`gd`/`gs` group by list/domain/sender · `s`/`S` next/prev sort · `zh` hide ruled · `enter` detail · `t`/`f`/`r` plan rule · `x` plan trash of existing |
 | rules | `dd` plan removal (`{n}dd`, or visual range) · `x` plan trash of existing |
-| search | `/` `i` `e` edit query · `X` plan trash of all matches |
+| search | `/` `i` `e` edit query · `t` plan trash rules for the matches' lists/senders (+ trash) · `X` plan trash of all matches |
 | plan | `dd` drop item(s) · `enter` show messages · `D` discard plan |
 | dialog | `j`/`k` · `gg`/`G` · `ctrl+d`/`ctrl+u` · `ctrl+f`/`ctrl+b` scroll · action keys (`y`/`s`/`r`) · `esc`/`q` close · info dialogs (no actions): `enter` close, `A` close + open apply |
 

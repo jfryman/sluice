@@ -38,6 +38,20 @@ Planning a trash rule (`t`) immediately looks up existing mail with `index.Match
 list/domain/sender match, trash folder excluded) and opens a dialog (per-folder counts, newest 15
 subjects, "N already planned"); `y` adds the refs to the plan. `x` does the same without a rule
 (Candidates and Rules tabs). Search-tab `X` plans every match of the query (not just the 1000 shown).
+
+Search-tab `t` turns a query into **rules**: over all matches it derives one rule per List-Id, else
+per exact From address (same as the sweep; never domain or display name — James's call: search
+by name, but anchor the rule on list/sender rather than chase names). A dialog lists
+rules with match counts; senders that are correspondents/own addresses are left out ("held"),
+existing/planned rules are shown but not re-added, and more than `maxSearchRules` (20) new rules
+refuses. `y` stages the new trash rules, then runs `retro` over new + existing rules → the usual
+plan-trash dialog (all mail those rules match, not only the query's matches).
+
+```go
+// searchRules: per match
+kind, value := index.KindList, x.ListID
+if value == "" { kind, value = index.KindSender, x.FromAddr }
+```
 The moves below run only inside `plan.Apply`, as one batch for the whole plan.
 
 ## Trash + journal

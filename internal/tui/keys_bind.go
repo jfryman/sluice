@@ -126,6 +126,12 @@ func bindTabs() {
 		m.qOn = true
 		return m.qinput.Focus()
 	})
+	bind(scSearch, "t", true, "plan trash rules for the matches' lists/senders (+ trash)", func(m *Model, c int) tea.Cmd {
+		if m.rtotal == 0 {
+			return nil
+		}
+		return tea.Batch(m.startBusy("deriving rules from matches"), m.searchRules(m.qinput.Value()))
+	})
 	bind(scSearch, "X", true, "plan trash of all matches", func(m *Model, c int) tea.Cmd {
 		if m.rtotal == 0 {
 			return nil
